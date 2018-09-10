@@ -137,8 +137,6 @@ go_library(
         "//vendor/github.com/onsi/gomega/types:go_default_library",
         "//vendor/github.com/prometheus/common/expfmt:go_default_library",
         "//vendor/github.com/prometheus/common/model:go_default_library",
-        "//vendor/github.com/spf13/pflag:go_default_library",
-        "//vendor/github.com/spf13/viper:go_default_library",
         "//vendor/golang.org/x/crypto/ssh:go_default_library",
         "//vendor/golang.org/x/net/websocket:go_default_library",
         "//vendor/k8s.io/utils/exec:go_default_library",
@@ -156,6 +154,7 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
+        "//test/e2e/framework/config:all-srcs",
         "//test/e2e/framework/ginkgowrapper:all-srcs",
         "//test/e2e/framework/ingress:all-srcs",
         "//test/e2e/framework/metrics:all-srcs",
@@ -165,6 +164,7 @@ filegroup(
         "//test/e2e/framework/providers/kubemark:all-srcs",
         "//test/e2e/framework/testfiles:all-srcs",
         "//test/e2e/framework/timer:all-srcs",
+        "//test/e2e/framework/viperconfig:all-srcs",
     ],
     tags = ["automanaged"],
 )

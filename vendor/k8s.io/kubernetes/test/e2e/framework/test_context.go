@@ -21,18 +21,16 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/onsi/ginkgo/config"
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 	utilflag "k8s.io/apiserver/pkg/util/flag"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
+	e2econfig "k8s.io/kubernetes/test/e2e/framework/config"
 )
 
 const defaultHost = "http://127.0.0.1:8080"
@@ -40,29 +38,31 @@ const defaultHost = "http://127.0.0.1:8080"
 // TestContextType contains test settings and global state. Due to
 // historic reasons, it is a mixture of items managed by the test
 // framework itself, cloud providers and individual tests.
-// The goal is to move anything not managed by the framework
-// into separate context structures.
+// The goal is to move anything not required by the framework
+// into the code which uses the settings.
 //
-// New tests should be written such that:
-// - they have their own context structure
-// - if they use command line flags, flags should be defined
-//   using the standard `flag` package and follow the
-//   pattern <package>.<parameter> where <package> matches
-//   the directory name under test/e2e and <parameter>
-//   may itself contain further dots to group related parameters
-//   (for example, 'foo.bar.xyz' for a
-//   parameter defined in test/e2e/foo/context.go)
-// - if they use viper instead or in addition to flags,
-//   the viper keys used by a test should have the same
-//   prefix as flags; note that unmarshalling just the test's
-//   keys into its own context structure requires
-//   a slight workaround, see https://github.com/kubernetes/kubernetes/issues/66649#issuecomment-408108486
+// The recommendation for those settings is:
+// - They are stored in their own context structure or local
+//   variables.
+// - The standard `flag` package is used to register them.
+//   The flag name should follow the pattern <part1>.<part2>....<partn>
+//   where the prefix is unlikely to conflict with other tests or
+//   standard packages and each part is in lower camel case. For
+//   example, test/e2e/storage/csi/context.go could define
+//   storage.csi.numIterations.
+// - framework/config can be used to simplify the registration of
+//   multiple options with a single function call:
+//   var storageCSI {
+//       NumIterations `default:"1" usage:"number of iterations"`
+//   }
+//   _ config.AddOptions(&storageCSI, "storage.csi")
+// - The direct use Viper in tests is possible, but discouraged because
+//   it only works in test suites which use Viper (which is not
+//   required) and the supported options cannot be
+//   discovered by a test suite user.
 //
-// The drawback of using Viper with command line flags is that
-// supported configuration options can only be discovered by reading
-// the source code.  Therefore it is recommended to also define
-// command line flags. All command line flags will be automatically
-// bound to Viper keys of the same name.
+// Test suite authors can use framework/viper to make all command line
+// parameters also configurable via a configuration file.
 type TestContextType struct {
 	KubeConfig         string
 	KubeContext        string
@@ -145,18 +145,6 @@ type TestContextType struct {
 
 	// Indicates what path the kubernetes-anywhere is installed on
 	KubernetesAnywherePath string
-
-	// Viper is the name of a configuration file, in a format
-	// supported by Viper (https://github.com/spf13/viper#what-is-viper).
-	// May contain a path and may or may not contain the file suffix.
-	//
-	// Example: Create a file 'e2e.json' with the following:
-	// 	"Cadvisor":{
-	// 		"MaxRetries":"6"
-	// 	}
-	// Then invoke e2e with '--viper-config e2e' with 'e2e.json'
-	// in the current directory or '--viper-config /tmp/e2e.json'.
-	Viper string
 }
 
 // NodeTestContextType is part of TestContextType, it is shared by all node e2e test.
@@ -231,7 +219,6 @@ func RegisterCommonFlags() {
 	flag.StringVar(&TestContext.ReportPrefix, "report-prefix", "", "Optional prefix for JUnit XML reports. Default is empty, which doesn't prepend anything to the default name.")
 	flag.StringVar(&TestContext.ReportDir, "report-dir", "", "Path to the directory where the JUnit XML reports should be saved. Default is empty, which doesn't generate these reports.")
 	flag.Var(utilflag.NewMapStringBool(&TestContext.FeatureGates), "feature-gates", "A set of key=value pairs that describe feature gates for alpha/experimental features.")
-	flag.StringVar(&TestContext.Viper, "viper-config", "", "The name of the viper config i.e. 'e2e' will read values from 'e2e.json' locally.  All e2e parameters can also be configured in such a file.")
 	flag.StringVar(&TestContext.ContainerRuntime, "container-runtime", "docker", "The container runtime of cluster VM instances (docker/remote).")
 	flag.StringVar(&TestContext.ContainerRuntimeEndpoint, "container-runtime-endpoint", "unix:///var/run/dockershim.sock", "The container runtime endpoint of cluster VM instances.")
 	flag.StringVar(&TestContext.ContainerRuntimeProcessName, "container-runtime-process-name", "dockerd", "The name of the container runtime process.")
@@ -309,63 +296,46 @@ func RegisterNodeFlags() {
 	flag.StringVar(&TestContext.SystemSpecName, "system-spec-name", "", "The name of the system spec (e.g., gke) that's used in the node e2e test. The system specs are in test/e2e_node/system/specs/. This is used by the test framework to determine which tests to run for validating the system requirements.")
 }
 
-const (
-	viperFileNotFound = "Unsupported Config Type \"\""
-)
+func CopyFlags(from, to *flag.FlagSet) {
+	from.VisitAll(func(f *flag.Flag) {
+		to.Var(f.Value, f.Name, f.Usage)
+	})
+}
 
-// ViperizeFlags sets up all flag and config processing. Future configuration info should be added to viper, not to flags.
-func ViperizeFlags() {
-
-	// Part 1: Set regular flags.
+// HandleFlags sets up all flags and parses the command line.
+func HandleFlags() {
 	RegisterCommonFlags()
 	RegisterClusterFlags()
-	flag.Parse()
 
-	// Part 2: Enable Viper.
-	// This must be done after common flags are registered, since Viper is a flag option.
-	// TestContext does not depend on Viper, but individual tests may want to use it.
-	if TestContext.Viper != "" {
-		viper.SetConfigName(filepath.Base(TestContext.Viper))
-		viper.AddConfigPath(filepath.Dir(TestContext.Viper))
-		if err := viper.ReadInConfig(); err != nil {
-			// If the user specified a file suffix, the Viper won't
-			// find the file because it always appends its known set
-			// of file suffices. Therefore try once more without
-			// suffix.
-			ext := filepath.Ext(TestContext.Viper)
-			if ext != "" && err.Error() == viperFileNotFound {
-				viper.SetConfigName(filepath.Base(TestContext.Viper[0 : len(TestContext.Viper)-len(ext)]))
-				err = viper.ReadInConfig()
-			}
-			if err != nil {
-				// If parsing a config was requested, then it
-				// must succeed. This catches syntax errors
-				// and "file not found". Unfortunately error
-				// messages are sometimes hard to understand,
-				// so try to help the user a bit.
-				switch err.Error() {
-				case viperFileNotFound:
-					panic(fmt.Sprintf("Viper config file %s not found or not using a supported file format", TestContext.Viper))
-				default:
-					panic(fmt.Sprintf("Error parsing Viper config file %s: %s", TestContext.Viper, err))
-				}
-			}
-		}
-
-		// Expose all command line flags also as Viper keys.
-		pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
-		pflag.Parse()
-		viper.BindPFlags(pflag.CommandLine)
-
-		// Update all flag values with values found via
-		// Viper. We do this ourselves instead of calling
-		// viper.Unmarshal(&TestContext) because that would
-		// only update values in the main context and miss
-		// values stored in the context of individual tests.
-		viperUnmarshal()
+	help := flag.Bool("help", false, "show common flags")
+	fullHelp := flag.Bool("full-help", false, "show all flags, including the less commonly used ones")
+	// We copy all flags (normal and config) into a single flag
+	// set and then parse in one go. The default usage
+	// instructions only dump the normal flags. If users want to see
+	// all available options, they can use --full-help or dump
+	// a sample config file.
+	allFlags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
+	CopyFlags(flag.CommandLine, allFlags)
+	CopyFlags(e2econfig.CommandLine, allFlags)
+	err := allFlags.Parse(os.Args[1:])
+	if err == flag.ErrHelp || *help {
+		fmt.Fprintf(flag.CommandLine.Output(), "Common flags for %s:\n", os.Args[0])
+		flag.CommandLine.PrintDefaults()
+		os.Exit(1)
 	}
-
-	AfterReadingAllFlags(&TestContext)
+	if *fullHelp {
+		fmt.Fprintf(flag.CommandLine.Output(), "All flags for %s:\n", os.Args[0])
+		flag.CommandLine.PrintDefaults()
+		os.Exit(1)
+	}
+	if allFlags.NArg() > 0 {
+		// We have no support for additional parameters. We
+		// intentionally do not dump valid parameters here
+		// because the list would be too long, making it
+		// harder to spot the error message.
+		fmt.Fprintf(os.Stderr, "Unrecognized parameters for %s, see --full-help: %v\n", os.Args[0], allFlags.Args())
+		os.Exit(1)
+	}
 }
 
 func createKubeConfig(clientCfg *restclient.Config) *clientcmdapi.Config {
@@ -428,30 +398,4 @@ func AfterReadingAllFlags(t *TestContextType) {
 	if t.AllowedNotReadyNodes == 0 {
 		t.AllowedNotReadyNodes = t.CloudConfig.NumNodes / 100
 	}
-}
-
-// viperUnmarshall updates all command line flags with the corresponding values found
-// via Viper, regardless whether the flag value is stored in TestContext, some other
-// context or a local variable.
-func viperUnmarshal() {
-	flag.VisitAll(func(f *flag.Flag) {
-		if viper.IsSet(f.Name) {
-			// In contrast to viper.Unmarshal(), values
-			// that have the wrong type (for example, a
-			// list instead of a plain string) will not
-			// trigger an error here. This could be fixed
-			// by checking the type ourselves, but
-			// probably isn't worth the effort.
-			//
-			// "%v" correctly turns bool, int, strings into
-			// the representation expected by flag, so those
-			// can be used in config files. Plain strings
-			// always work there, just as on the command line.
-			value := viper.Get(f.Name)
-			str := fmt.Sprintf("%v", value)
-			if err := f.Value.Set(str); err != nil {
-				panic(err)
-			}
-		}
-	})
 }

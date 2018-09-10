@@ -49,11 +49,6 @@
 [[override]]
   name = "k8s.io/client-go"
   branch = "master"
-[[override]]
-  name = "k8s.io/cli-runtime"
-  branch = "master"
-  # https://github.com/kubernetes/org/issues/58
-  source = "github.com/pohly/k8s-cli-runtime"
 
 [[override]]
   name = "github.com/docker/docker"
