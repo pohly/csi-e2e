@@ -24,9 +24,11 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 
 	. "github.com/onsi/ginkgo"
-
 	// test sources
-	_ "k8s.io/kubernetes/test/e2e/storage"
+	// The goal is to import the CSI storage tests. Right now
+	// we can't do that because that pulls in also all of the other
+	// storage tests and their dependencies, which we don't want.
+	// _ "k8s.io/kubernetes/test/e2e/storage"
 )
 
 func init() {
@@ -38,7 +40,7 @@ func init() {
 
 	// TODO: do we really need extra files at runtime?
 	if framework.TestContext.RepoRoot != "" {
-		testfiles.AddFileSource(testfiles.RootFileSource{framework.TestContext.RepoRoot})
+		testfiles.AddFileSource(testfiles.RootFileSource{Root: framework.TestContext.RepoRoot})
 	}
 }
 

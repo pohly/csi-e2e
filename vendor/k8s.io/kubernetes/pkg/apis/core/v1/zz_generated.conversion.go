@@ -4074,6 +4074,7 @@ func Convert_core_LocalObjectReference_To_v1_LocalObjectReference(in *core.Local
 
 func autoConvert_v1_LocalVolumeSource_To_core_LocalVolumeSource(in *v1.LocalVolumeSource, out *core.LocalVolumeSource, s conversion.Scope) error {
 	out.Path = in.Path
+	out.FSType = (*string)(unsafe.Pointer(in.FSType))
 	return nil
 }
 
@@ -4084,6 +4085,7 @@ func Convert_v1_LocalVolumeSource_To_core_LocalVolumeSource(in *v1.LocalVolumeSo
 
 func autoConvert_core_LocalVolumeSource_To_v1_LocalVolumeSource(in *core.LocalVolumeSource, out *v1.LocalVolumeSource, s conversion.Scope) error {
 	out.Path = in.Path
+	out.FSType = (*string)(unsafe.Pointer(in.FSType))
 	return nil
 }
 
@@ -5548,6 +5550,7 @@ func autoConvert_v1_PodSpec_To_core_PodSpec(in *v1.PodSpec, out *core.PodSpec, s
 	out.DNSConfig = (*core.PodDNSConfig)(unsafe.Pointer(in.DNSConfig))
 	out.ReadinessGates = *(*[]core.PodReadinessGate)(unsafe.Pointer(&in.ReadinessGates))
 	out.RuntimeClassName = (*string)(unsafe.Pointer(in.RuntimeClassName))
+	out.EnableServiceLinks = (*bool)(unsafe.Pointer(in.EnableServiceLinks))
 	return nil
 }
 
@@ -5614,6 +5617,7 @@ func autoConvert_core_PodSpec_To_v1_PodSpec(in *core.PodSpec, out *v1.PodSpec, s
 	out.DNSConfig = (*v1.PodDNSConfig)(unsafe.Pointer(in.DNSConfig))
 	out.ReadinessGates = *(*[]v1.PodReadinessGate)(unsafe.Pointer(&in.ReadinessGates))
 	out.RuntimeClassName = (*string)(unsafe.Pointer(in.RuntimeClassName))
+	out.EnableServiceLinks = (*bool)(unsafe.Pointer(in.EnableServiceLinks))
 	return nil
 }
 
@@ -6724,6 +6728,7 @@ func autoConvert_v1_SecurityContext_To_core_SecurityContext(in *v1.SecurityConte
 	out.RunAsNonRoot = (*bool)(unsafe.Pointer(in.RunAsNonRoot))
 	out.ReadOnlyRootFilesystem = (*bool)(unsafe.Pointer(in.ReadOnlyRootFilesystem))
 	out.AllowPrivilegeEscalation = (*bool)(unsafe.Pointer(in.AllowPrivilegeEscalation))
+	out.ProcMount = (*core.ProcMountType)(unsafe.Pointer(in.ProcMount))
 	return nil
 }
 
@@ -6741,6 +6746,7 @@ func autoConvert_core_SecurityContext_To_v1_SecurityContext(in *core.SecurityCon
 	out.RunAsNonRoot = (*bool)(unsafe.Pointer(in.RunAsNonRoot))
 	out.ReadOnlyRootFilesystem = (*bool)(unsafe.Pointer(in.ReadOnlyRootFilesystem))
 	out.AllowPrivilegeEscalation = (*bool)(unsafe.Pointer(in.AllowPrivilegeEscalation))
+	out.ProcMount = (*v1.ProcMountType)(unsafe.Pointer(in.ProcMount))
 	return nil
 }
 
@@ -7251,7 +7257,7 @@ func Convert_core_TopologySelectorTerm_To_v1_TopologySelectorTerm(in *core.Topol
 }
 
 func autoConvert_v1_TypedLocalObjectReference_To_core_TypedLocalObjectReference(in *v1.TypedLocalObjectReference, out *core.TypedLocalObjectReference, s conversion.Scope) error {
-	out.APIGroup = in.APIGroup
+	out.APIGroup = (*string)(unsafe.Pointer(in.APIGroup))
 	out.Kind = in.Kind
 	out.Name = in.Name
 	return nil
@@ -7263,7 +7269,7 @@ func Convert_v1_TypedLocalObjectReference_To_core_TypedLocalObjectReference(in *
 }
 
 func autoConvert_core_TypedLocalObjectReference_To_v1_TypedLocalObjectReference(in *core.TypedLocalObjectReference, out *v1.TypedLocalObjectReference, s conversion.Scope) error {
-	out.APIGroup = in.APIGroup
+	out.APIGroup = (*string)(unsafe.Pointer(in.APIGroup))
 	out.Kind = in.Kind
 	out.Name = in.Name
 	return nil

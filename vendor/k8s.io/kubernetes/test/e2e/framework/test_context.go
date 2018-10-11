@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	kubeletconfig "k8s.io/kubernetes/pkg/kubelet/apis/config"
-	e2econfig "k8s.io/kubernetes/test/e2e/framework/config"
 )
 
 const defaultHost = "http://127.0.0.1:8080"
@@ -226,7 +225,7 @@ func RegisterCommonFlags() {
 	flag.StringVar(&TestContext.SystemdServices, "systemd-services", "docker", "The comma separated list of systemd services the framework will dump logs for.")
 	flag.StringVar(&TestContext.ImageServiceEndpoint, "image-service-endpoint", "", "The image service endpoint of cluster VM instances.")
 	flag.StringVar(&TestContext.DockershimCheckpointDir, "dockershim-checkpoint-dir", "/var/lib/dockershim/sandbox", "The directory for dockershim to store sandbox checkpoints.")
-	flag.StringVar(&TestContext.KubernetesAnywherePath, "kubernetes-anywhere-path", "/workspace/kubernetes-anywhere", "Which directory kubernetes-anywhere is installed to.")
+	flag.StringVar(&TestContext.KubernetesAnywherePath, "kubernetes-anywhere-path", "/workspace/k8s.io/kubernetes-anywhere", "Which directory kubernetes-anywhere is installed to.")
 }
 
 // Register flags specific to the cluster e2e test suite.
@@ -244,8 +243,8 @@ func RegisterClusterFlags() {
 	flag.StringVar(&TestContext.KubectlPath, "kubectl-path", "kubectl", "The kubectl binary to use. For development, you might use 'cluster/kubectl.sh' here.")
 	flag.StringVar(&TestContext.OutputDir, "e2e-output-dir", "/tmp", "Output directory for interesting/useful test data, like performance data, benchmarks, and other metrics.")
 	flag.StringVar(&TestContext.Prefix, "prefix", "e2e", "A prefix to be added to cloud resources created during testing.")
-	flag.StringVar(&TestContext.MasterOSDistro, "master-os-distro", "debian", "The OS distribution of cluster master (debian, trusty, or coreos).")
-	flag.StringVar(&TestContext.NodeOSDistro, "node-os-distro", "debian", "The OS distribution of cluster VM instances (debian, trusty, or coreos).")
+	flag.StringVar(&TestContext.MasterOSDistro, "master-os-distro", "debian", "The OS distribution of cluster master (debian, ubuntu, gci, coreos, or custom).")
+	flag.StringVar(&TestContext.NodeOSDistro, "node-os-distro", "debian", "The OS distribution of cluster VM instances (debian, ubuntu, gci, coreos, or custom).")
 	flag.StringVar(&TestContext.ClusterMonitoringMode, "cluster-monitoring-mode", "standalone", "The monitoring solution that is used in the cluster.")
 	flag.BoolVar(&TestContext.EnablePrometheusMonitoring, "prometheus-monitoring", false, "Separate Prometheus monitoring deployed in cluster.")
 
@@ -296,46 +295,11 @@ func RegisterNodeFlags() {
 	flag.StringVar(&TestContext.SystemSpecName, "system-spec-name", "", "The name of the system spec (e.g., gke) that's used in the node e2e test. The system specs are in test/e2e_node/system/specs/. This is used by the test framework to determine which tests to run for validating the system requirements.")
 }
 
-func CopyFlags(from, to *flag.FlagSet) {
-	from.VisitAll(func(f *flag.Flag) {
-		to.Var(f.Value, f.Name, f.Usage)
-	})
-}
-
 // HandleFlags sets up all flags and parses the command line.
 func HandleFlags() {
 	RegisterCommonFlags()
 	RegisterClusterFlags()
-
-	help := flag.Bool("help", false, "show common flags")
-	fullHelp := flag.Bool("full-help", false, "show all flags, including the less commonly used ones")
-	// We copy all flags (normal and config) into a single flag
-	// set and then parse in one go. The default usage
-	// instructions only dump the normal flags. If users want to see
-	// all available options, they can use --full-help or dump
-	// a sample config file.
-	allFlags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-	CopyFlags(flag.CommandLine, allFlags)
-	CopyFlags(e2econfig.CommandLine, allFlags)
-	err := allFlags.Parse(os.Args[1:])
-	if err == flag.ErrHelp || *help {
-		fmt.Fprintf(flag.CommandLine.Output(), "Common flags for %s:\n", os.Args[0])
-		flag.CommandLine.PrintDefaults()
-		os.Exit(1)
-	}
-	if *fullHelp {
-		fmt.Fprintf(flag.CommandLine.Output(), "All flags for %s:\n", os.Args[0])
-		flag.CommandLine.PrintDefaults()
-		os.Exit(1)
-	}
-	if allFlags.NArg() > 0 {
-		// We have no support for additional parameters. We
-		// intentionally do not dump valid parameters here
-		// because the list would be too long, making it
-		// harder to spot the error message.
-		fmt.Fprintf(os.Stderr, "Unrecognized parameters for %s, see --full-help: %v\n", os.Args[0], allFlags.Args())
-		os.Exit(1)
-	}
+	flag.Parse()
 }
 
 func createKubeConfig(clientCfg *restclient.Config) *clientcmdapi.Config {
@@ -346,7 +310,7 @@ func createKubeConfig(clientCfg *restclient.Config) *clientcmdapi.Config {
 	config := clientcmdapi.NewConfig()
 
 	credentials := clientcmdapi.NewAuthInfo()
-	credentials.Token = clientCfg.BearerToken
+	credentials.TokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	credentials.ClientCertificate = clientCfg.TLSClientConfig.CertFile
 	if len(credentials.ClientCertificate) == 0 {
 		credentials.ClientCertificateData = clientCfg.TLSClientConfig.CertData
@@ -397,5 +361,12 @@ func AfterReadingAllFlags(t *TestContextType) {
 	// Allow 1% of nodes to be unready (statistically) - relevant for large clusters.
 	if t.AllowedNotReadyNodes == 0 {
 		t.AllowedNotReadyNodes = t.CloudConfig.NumNodes / 100
+	}
+
+	// Make sure that all test runs have a valid TestContext.CloudConfig.Provider.
+	var err error
+	TestContext.CloudConfig.Provider, err = SetupProviderConfig(TestContext.Provider)
+	if err != nil {
+		Failf("Failed to setup provide r config: %v", err)
 	}
 }

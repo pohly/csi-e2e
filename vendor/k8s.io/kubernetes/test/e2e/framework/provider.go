@@ -1,5 +1,5 @@
 /*
-Copyright 20158 The Kubernetes Authors.
+Copyright 2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ var (
 	mutex     sync.Mutex
 )
 
-// Registerr is expected to be called during application init,
+// RegisterProvider is expected to be called during application init,
 // typically by an init function in a provider package.
 func RegisterProvider(name string, factory Factory) {
 	mutex.Lock()
@@ -54,19 +54,20 @@ func init() {
 	})
 }
 
-// SetupProviderConfig validates and sets up TestContext.CloudConfig based on TestContext.Provider.
-func SetupProviderConfig() error {
+// SetupProviderConfig validates the chosen provider and creates
+// an interface instance for it.
+func SetupProviderConfig(providerName string) (ProviderInterface, error) {
 	var err error
 
 	mutex.Lock()
 	defer mutex.Unlock()
-	factory, ok := providers[TestContext.Provider]
+	factory, ok := providers[providerName]
 	if !ok {
-		return fmt.Errorf("The --provider=%s is unknown.", TestContext.Provider)
+		return nil, fmt.Errorf("The provider %s is unknown.", providerName)
 	}
-	TestContext.CloudConfig.Provider, err = factory()
+	provider, err := factory()
 
-	return err
+	return provider, err
 }
 
 // ProviderInterface contains the implementation for certain

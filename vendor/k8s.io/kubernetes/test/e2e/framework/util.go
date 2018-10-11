@@ -62,6 +62,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
@@ -94,7 +95,6 @@ import (
 	sshutil "k8s.io/kubernetes/pkg/ssh"
 	"k8s.io/kubernetes/pkg/util/system"
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
-	utilversion "k8s.io/kubernetes/pkg/util/version"
 	"k8s.io/kubernetes/test/e2e/framework/ginkgowrapper"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
@@ -111,10 +111,13 @@ const (
 	// Same as `PodStartTimeout` to wait for the pod to be started, but shorter.
 	// Use it case by case when we are sure pod start will not be delayed
 	// minutes by slow docker pulls or something else.
-	PodStartShortTimeout = 1 * time.Minute
+	PodStartShortTimeout = 2 * time.Minute
 
 	// How long to wait for a pod to be deleted
 	PodDeleteTimeout = 5 * time.Minute
+
+	// PodEventTimeout is how much we wait for a pod event to occur.
+	PodEventTimeout = 2 * time.Minute
 
 	// If there are any orphaned namespaces to clean up, this test is running
 	// on a long lived cluster. A long wait here is preferably to spurious test
@@ -198,19 +201,10 @@ const (
 
 	// ssh port
 	sshPort = "22"
-
-	// ImagePrePullingTimeout is the time we wait for the e2e-image-puller
-	// static pods to pull the list of seeded images. If they don't pull
-	// images within this time we simply log their output and carry on
-	// with the tests.
-	ImagePrePullingTimeout = 5 * time.Minute
 )
 
 var (
 	BusyBoxImage = imageutils.GetE2EImage(imageutils.BusyBox)
-	// Label allocated to the image puller static pod that runs on each node
-	// before e2es.
-	ImagePullerLabels = map[string]string{"name": "e2e-image-puller"}
 
 	// For parsing Kubectl version for version-skewed testing.
 	gitVersionRegexp = regexp.MustCompile("GitVersion:\"(v.+?)\"")
@@ -631,7 +625,7 @@ func WaitForPodsSuccess(c clientset.Interface, ns string, successPodLabels map[s
 //
 // If ignoreLabels is not empty, pods matching this selector are ignored.
 func WaitForPodsRunningReady(c clientset.Interface, ns string, minPods, allowedNotReadyPods int32, timeout time.Duration, ignoreLabels map[string]string) error {
-	ignoreSelector := labels.SelectorFromSet(ignoreLabels)
+	ignoreSelector := labels.SelectorFromSet(map[string]string{})
 	start := time.Now()
 	Logf("Waiting up to %v for all pods (need at least %d) in namespace '%s' to be running and ready",
 		timeout, minPods, ns)
@@ -1463,6 +1457,29 @@ func podRunning(c clientset.Interface, podName, namespace string) wait.Condition
 			return false, conditions.ErrPodCompleted
 		}
 		return false, nil
+	}
+}
+
+// WaitTimeoutForPodEvent waits for an event to occur for a pod
+func WaitTimeoutForPodEvent(c clientset.Interface, podName, namespace, eventSelector, msg string, timeout time.Duration) error {
+	return wait.PollImmediate(Poll, timeout, eventOccured(c, podName, namespace, eventSelector, msg))
+}
+
+func eventOccured(c clientset.Interface, podName, namespace, eventSelector, msg string) wait.ConditionFunc {
+	options := metav1.ListOptions{FieldSelector: eventSelector}
+	return func() (bool, error) {
+		events, err := c.CoreV1().Events(namespace).List(options)
+		if err != nil {
+			return false, fmt.Errorf("got error while getting pod events: %s", err)
+		}
+		if len(events.Items) == 0 {
+			return false, fmt.Errorf("no events found")
+		}
+		if strings.Contains(events.Items[0].Message, msg) {
+			return false, fmt.Errorf("%q error not found", msg)
+		} else {
+			return true, nil
+		}
 	}
 }
 
@@ -4159,7 +4176,9 @@ func CheckNodesReady(c clientset.Interface, size int, timeout time.Duration) ([]
 
 		// Filter out not-ready nodes.
 		FilterNodes(nodes, func(node v1.Node) bool {
-			return IsNodeConditionSetAsExpected(&node, v1.NodeReady, true)
+			nodeReady := IsNodeConditionSetAsExpected(&node, v1.NodeReady, true)
+			networkReady := IsNodeConditionUnset(&node, v1.NodeNetworkUnavailable) || IsNodeConditionSetAsExpected(&node, v1.NodeNetworkUnavailable, false)
+			return nodeReady && networkReady
 		})
 		numReady := len(nodes.Items)
 

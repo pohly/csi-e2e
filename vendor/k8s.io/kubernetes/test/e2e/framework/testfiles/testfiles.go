@@ -25,6 +25,7 @@ limitations under the License.
 package testfiles
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -32,11 +33,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/onsi/ginkgo"
 )
 
-var filesources = make([]FileSource, 0, 5)
+var filesources []FileSource
 
 // AddFileSource registers another provider for files that may be
 // needed at runtime. Should be called during initialization of a test
@@ -65,21 +64,37 @@ type FileSource interface {
 	DescribeFiles() string
 }
 
+// Fail is an error handler function with the same prototype and
+// semantic as ginkgo.Fail. Typically ginkgo.Fail is what callers
+// of ReadOrDie and Exists will pass. This way this package
+// avoids depending on Ginkgo.
+type Fail func(failure string, callerSkip ...int)
+
 // ReadOrDie tries to retrieve the desired file content from
 // one of the registered file sources. In contrast to FileSource, it
-// will either return a valid slice or abort the test, i.e. the caller
-// doesn't have to implement error checking.
-func ReadOrDie(filePath string) []byte {
+// will either return a valid slice or abort the test by calling the fatal function,
+// i.e. the caller doesn't have to implement error checking.
+func ReadOrDie(filePath string, fail Fail) []byte {
+	data, err := Read(filePath)
+	if err != nil {
+		fail(err.Error(), 1)
+	}
+	return data
+}
+
+// Read tries to retrieve the desired file content from
+// one of the registered file sources.
+func Read(filePath string) ([]byte, error) {
 	if len(filesources) == 0 {
-		ginkgo.Fail(fmt.Sprintf("No file sources registered (yet?), cannot retrieve test file %s.", filePath))
+		return nil, fmt.Errorf("no file sources registered (yet?), cannot retrieve test file %s", filePath)
 	}
 	for _, filesource := range filesources {
 		data, err := filesource.ReadTestFile(filePath)
 		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("fatal error retrieving test file %s: %s", filePath, err))
+			return nil, fmt.Errorf("fatal error retrieving test file %s: %s", filePath, err)
 		}
 		if data != nil {
-			return data
+			return data, nil
 		}
 	}
 	// Here we try to generate an error that points test authors
@@ -89,17 +104,17 @@ func ReadOrDie(filePath string) []byte {
 		error += filesource.DescribeFiles()
 		error += "\n"
 	}
-	ginkgo.Fail(error)
-	// not reached
-	return nil
+	return nil, errors.New(error)
 }
 
-// Exists checks whether a file could be read.
-func Exists(filePath string) bool {
+// Exists checks whether a file could be read. Unexpected errors
+// are handled by calling the fail function, which then should
+// abort the current test.
+func Exists(filePath string, fail Fail) bool {
 	for _, filesource := range filesources {
 		data, err := filesource.ReadTestFile(filePath)
 		if err != nil {
-			ginkgo.Fail(fmt.Sprintf("fatal error looking for test file %s: %s", filePath, err))
+			fail(fmt.Sprintf("fatal error looking for test file %s: %s", filePath, err), 1)
 		}
 		if data != nil {
 			return true
@@ -113,6 +128,8 @@ type RootFileSource struct {
 	Root string
 }
 
+// ReadTestFile looks looks for the file relative to the configured
+// root directory.
 func (r RootFileSource) ReadTestFile(filePath string) ([]byte, error) {
 	fullPath := filepath.Join(r.Root, filePath)
 	data, err := ioutil.ReadFile(fullPath)
@@ -123,6 +140,8 @@ func (r RootFileSource) ReadTestFile(filePath string) ([]byte, error) {
 	return data, err
 }
 
+// DescribeFiles explains that it looks for files inside a certain
+// root directory.
 func (r RootFileSource) DescribeFiles() string {
 	description := fmt.Sprintf("Test files are expected in %q", r.Root)
 	if !path.IsAbs(r.Root) {
@@ -145,6 +164,7 @@ type BindataFileSource struct {
 	AssetNames func() []string
 }
 
+// ReadTestFile looks for an asset with the given path.
 func (b BindataFileSource) ReadTestFile(filePath string) ([]byte, error) {
 	fileBytes, err := b.Asset(filePath)
 	if err != nil {
@@ -157,6 +177,7 @@ func (b BindataFileSource) ReadTestFile(filePath string) ([]byte, error) {
 	return fileBytes, nil
 }
 
+// DescribeFiles explains about gobindata and then lists all available files.
 func (b BindataFileSource) DescribeFiles() string {
 	var lines []string
 	lines = append(lines, "The following files are built into the test executable via gobindata. For questions on maintaining gobindata, contact the sig-testing group.")
