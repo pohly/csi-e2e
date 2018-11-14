@@ -2,7 +2,8 @@ Introduction
 ============
 
 This repository contains the Kubernetes E2E test framework set up in
-such a way that it runs the Kubernetes storage tests.
+such a way that it runs the Kubernetes volume tests for the
+example `hostpath` driver.
 
 Usage
 =====
@@ -11,9 +12,6 @@ No cloud-specific code gets imported, so tests can only be run against
 a cluster that has already been set up. Set the the usual
 `KUBECONFIG=<config file>` and then run `go test -v ./test/e2e` or
 `ginkgo ./test/e2e`.
-
-Note that all `test/e2e/storage` tests are imported. To run only the
-CSI tests, use `go test -v ./test/e2e -args -ginkgo.focus=CSI.Volumes`.
 
 Adding `-provider=local` suppresses a message about the flag not being
 set and treating the run as "conformance test", but has no other
@@ -29,4 +27,3 @@ Adding Tests
 
 New tests can be written in their own packages under `test/e2e` and
 then need to be added to the import list in `test/e2e_test.go`.
-

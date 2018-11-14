@@ -29,6 +29,6 @@ test:
                 false; \
         fi
 	go vet $$(go list ./... | grep -v vendor)
-	go test -v $$(go list ./... | grep -v vendor) -args -provider=local -ginkgo.focus=CSI.Volumes
+	go test -v ./test/e2e -args -provider=local -repo-root=`pwd` -ginkgo.failFast -ginkgo.progress -ginkgo.v
 
 .PHONY: test

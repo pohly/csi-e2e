@@ -24,11 +24,14 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 
 	. "github.com/onsi/ginkgo"
-	// test sources
-	// The goal is to import the CSI storage tests. Right now
-	// we can't do that because that pulls in also all of the other
-	// storage tests and their dependencies, which we don't want.
-	// _ "k8s.io/kubernetes/test/e2e/storage"
+
+	// test sources:
+	// this is our own package, not the one from
+	// k8s.io/kubernetes/test/e2e, but it uses the
+	// same underlying `testsuites` package to run
+	// the same tests against test drivers that we
+	// define.
+	_ "github.com/kubernetes-csi/csi-e2e/test/e2e/storage"
 )
 
 func init() {
