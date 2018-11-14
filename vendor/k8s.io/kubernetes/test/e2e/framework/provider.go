@@ -18,7 +18,10 @@ package framework
 
 import (
 	"fmt"
+	"os"
 	"sync"
+
+	"github.com/pkg/errors"
 
 	"k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -43,8 +46,11 @@ func RegisterProvider(name string, factory Factory) {
 }
 
 func init() {
-	// "local" can always be used.
+	// "local" or "skeleton" can always be used.
 	RegisterProvider("local", func() (ProviderInterface, error) {
+		return NullProvider{}, nil
+	})
+	RegisterProvider("skeleton", func() (ProviderInterface, error) {
 		return NullProvider{}, nil
 	})
 	// The empty string also works, but triggers a warning.
@@ -63,7 +69,7 @@ func SetupProviderConfig(providerName string) (ProviderInterface, error) {
 	defer mutex.Unlock()
 	factory, ok := providers[providerName]
 	if !ok {
-		return nil, fmt.Errorf("The provider %s is unknown.", providerName)
+		return nil, errors.Wrapf(os.ErrNotExist, "The provider %s is unknown.", providerName)
 	}
 	provider, err := factory()
 

@@ -21,21 +21,19 @@ import (
 	"sync"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	utilnode "k8s.io/kubernetes/pkg/util/node"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 )
 
 // NodeTree is a tree-like data structure that holds node names in each zone. Zone names are
 // keys to "NodeTree.tree" and values of "NodeTree.tree" are arrays of node names.
 type NodeTree struct {
-	tree           map[string]*nodeArray // a map from zone (region-zone) to an array of nodes in the zone.
-	zones          []string              // a list of all the zones in the tree (keys)
-	zoneIndex      int
-	exhaustedZones sets.String // set of zones that all of their nodes are returned by next()
-	NumNodes       int
-	mu             sync.RWMutex
+	tree      map[string]*nodeArray // a map from zone (region-zone) to an array of nodes in the zone.
+	zones     []string              // a list of all the zones in the tree (keys)
+	zoneIndex int
+	NumNodes  int
+	mu        sync.RWMutex
 }
 
 // nodeArray is a struct that has nodes that are in a zone.
@@ -48,7 +46,7 @@ type nodeArray struct {
 
 func (na *nodeArray) next() (nodeName string, exhausted bool) {
 	if len(na.nodes) == 0 {
-		glog.Error("The nodeArray is empty. It should have been deleted from NodeTree.")
+		klog.Error("The nodeArray is empty. It should have been deleted from NodeTree.")
 		return "", false
 	}
 	if na.lastIndex >= len(na.nodes) {
@@ -62,8 +60,7 @@ func (na *nodeArray) next() (nodeName string, exhausted bool) {
 // newNodeTree creates a NodeTree from nodes.
 func newNodeTree(nodes []*v1.Node) *NodeTree {
 	nt := &NodeTree{
-		tree:           make(map[string]*nodeArray),
-		exhaustedZones: sets.NewString(),
+		tree: make(map[string]*nodeArray),
 	}
 	for _, n := range nodes {
 		nt.AddNode(n)
@@ -84,7 +81,7 @@ func (nt *NodeTree) addNode(n *v1.Node) {
 	if na, ok := nt.tree[zone]; ok {
 		for _, nodeName := range na.nodes {
 			if nodeName == n.Name {
-				glog.Warningf("node %v already exist in the NodeTree", n.Name)
+				klog.Warningf("node %v already exist in the NodeTree", n.Name)
 				return
 			}
 		}
@@ -93,7 +90,7 @@ func (nt *NodeTree) addNode(n *v1.Node) {
 		nt.zones = append(nt.zones, zone)
 		nt.tree[zone] = &nodeArray{nodes: []string{n.Name}, lastIndex: 0}
 	}
-	glog.V(5).Infof("Added node %v in group %v to NodeTree", n.Name, zone)
+	klog.V(5).Infof("Added node %v in group %v to NodeTree", n.Name, zone)
 	nt.NumNodes++
 }
 
@@ -113,13 +110,13 @@ func (nt *NodeTree) removeNode(n *v1.Node) error {
 				if len(na.nodes) == 0 {
 					nt.removeZone(zone)
 				}
-				glog.V(5).Infof("Removed node %v in group %v from NodeTree", n.Name, zone)
+				klog.V(5).Infof("Removed node %v in group %v from NodeTree", n.Name, zone)
 				nt.NumNodes--
 				return nil
 			}
 		}
 	}
-	glog.Errorf("Node %v in group %v was not found", n.Name, zone)
+	klog.Errorf("Node %v in group %v was not found", n.Name, zone)
 	return fmt.Errorf("node %v in group %v was not found", n.Name, zone)
 }
 
@@ -156,7 +153,7 @@ func (nt *NodeTree) resetExhausted() {
 	for _, na := range nt.tree {
 		na.lastIndex = 0
 	}
-	nt.exhaustedZones = sets.NewString()
+	nt.zoneIndex = 0
 }
 
 // Next returns the name of the next node. NodeTree iterates over zones and in each zone iterates
@@ -167,18 +164,19 @@ func (nt *NodeTree) Next() string {
 	if len(nt.zones) == 0 {
 		return ""
 	}
+	numExhaustedZones := 0
 	for {
 		if nt.zoneIndex >= len(nt.zones) {
 			nt.zoneIndex = 0
 		}
 		zone := nt.zones[nt.zoneIndex]
 		nt.zoneIndex++
-		// We do not check the set of exhausted zones before calling next() on the zone. This ensures
+		// We do not check the exhausted zones before calling next() on the zone. This ensures
 		// that if more nodes are added to a zone after it is exhausted, we iterate over the new nodes.
 		nodeName, exhausted := nt.tree[zone].next()
 		if exhausted {
-			nt.exhaustedZones.Insert(zone)
-			if len(nt.exhaustedZones) == len(nt.zones) { // all zones are exhausted. we should reset.
+			numExhaustedZones++
+			if numExhaustedZones >= len(nt.zones) { // all zones are exhausted. we should reset.
 				nt.resetExhausted()
 			}
 		} else {

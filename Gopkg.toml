@@ -31,8 +31,7 @@
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  branch = "e2e-refactor-pr"
-  source = "github.com/pohly/kubernetes"
+  branch = "master"
 
 [[override]]
   name = "k8s.io/apimachinery"

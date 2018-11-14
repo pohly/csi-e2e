@@ -25,6 +25,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -67,6 +68,11 @@ const (
 // Eventual goal is to merge this with integration test framework.
 type Framework struct {
 	BaseName string
+
+	// Set together with creating the ClientSet and the namespace.
+	// Guaranteed to be unique in the cluster even when running the same
+	// test multiple times in parallel.
+	UniqueName string
 
 	ClientSet                        clientset.Interface
 	KubemarkExternalClusterClientSet clientset.Interface
@@ -229,6 +235,10 @@ func (f *Framework) BeforeEach() {
 		} else {
 			Logf("Skipping waiting for service account")
 		}
+		f.UniqueName = f.Namespace.GetName()
+	} else {
+		// not guaranteed to be unique, but very likely
+		f.UniqueName = fmt.Sprintf("%s-%08x", f.BaseName, rand.Int31())
 	}
 
 	if TestContext.GatherKubeSystemResourceUsageData != "false" && TestContext.GatherKubeSystemResourceUsageData != "none" {
@@ -338,7 +348,7 @@ func (f *Framework) AfterEach() {
 
 	// Print events if the test failed.
 	if CurrentGinkgoTestDescription().Failed && TestContext.DumpLogsOnFailure {
-		// Pass both unversioned client and and versioned clientset, till we have removed all uses of the unversioned client.
+		// Pass both unversioned client and versioned clientset, till we have removed all uses of the unversioned client.
 		if !f.SkipNamespaceCreation {
 			DumpAllNamespaceInfo(f.ClientSet, f.Namespace.Name)
 		}

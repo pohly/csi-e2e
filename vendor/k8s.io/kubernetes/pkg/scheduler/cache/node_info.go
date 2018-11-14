@@ -22,13 +22,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/golang/glog"
+	"k8s.io/klog"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	priorityutil "k8s.io/kubernetes/pkg/scheduler/algorithm/priorities/util"
-	"k8s.io/kubernetes/pkg/scheduler/util"
 )
 
 var (
@@ -51,7 +50,7 @@ type NodeInfo struct {
 
 	pods             []*v1.Pod
 	podsWithAffinity []*v1.Pod
-	usedPorts        util.HostPortInfo
+	usedPorts        HostPortInfo
 
 	// Total requested resource of all pods on this node.
 	// It includes assumed pods which scheduler sends binding to apiserver but
@@ -269,7 +268,7 @@ func NewNodeInfo(pods ...*v1.Pod) *NodeInfo {
 		allocatableResource: &Resource{},
 		TransientInfo:       NewTransientSchedulerInfo(),
 		generation:          nextGeneration(),
-		usedPorts:           make(util.HostPortInfo),
+		usedPorts:           make(HostPortInfo),
 		imageStates:         make(map[string]*ImageStateSummary),
 	}
 	for _, pod := range pods {
@@ -300,7 +299,7 @@ func (n *NodeInfo) SetPods(pods []*v1.Pod) {
 }
 
 // UsedPorts returns used ports on this node.
-func (n *NodeInfo) UsedPorts() util.HostPortInfo {
+func (n *NodeInfo) UsedPorts() HostPortInfo {
 	if n == nil {
 		return nil
 	}
@@ -308,7 +307,7 @@ func (n *NodeInfo) UsedPorts() util.HostPortInfo {
 }
 
 // SetUsedPorts sets the used ports on this node.
-func (n *NodeInfo) SetUsedPorts(newUsedPorts util.HostPortInfo) {
+func (n *NodeInfo) SetUsedPorts(newUsedPorts HostPortInfo) {
 	n.usedPorts = newUsedPorts
 }
 
@@ -443,7 +442,7 @@ func (n *NodeInfo) Clone() *NodeInfo {
 		memoryPressureCondition: n.memoryPressureCondition,
 		diskPressureCondition:   n.diskPressureCondition,
 		pidPressureCondition:    n.pidPressureCondition,
-		usedPorts:               make(util.HostPortInfo),
+		usedPorts:               make(HostPortInfo),
 		imageStates:             n.imageStates,
 		generation:              n.generation,
 	}
@@ -451,10 +450,10 @@ func (n *NodeInfo) Clone() *NodeInfo {
 		clone.pods = append([]*v1.Pod(nil), n.pods...)
 	}
 	if len(n.usedPorts) > 0 {
-		// util.HostPortInfo is a map-in-map struct
+		// HostPortInfo is a map-in-map struct
 		// make sure it's deep copied
 		for ip, portMap := range n.usedPorts {
-			clone.usedPorts[ip] = make(map[util.ProtocolPort]struct{})
+			clone.usedPorts[ip] = make(map[ProtocolPort]struct{})
 			for protocolPort, v := range portMap {
 				clone.usedPorts[ip][protocolPort] = v
 			}
@@ -530,7 +529,7 @@ func (n *NodeInfo) RemovePod(pod *v1.Pod) error {
 	for i := range n.podsWithAffinity {
 		k2, err := GetPodKey(n.podsWithAffinity[i])
 		if err != nil {
-			glog.Errorf("Cannot get pod key, err: %v", err)
+			klog.Errorf("Cannot get pod key, err: %v", err)
 			continue
 		}
 		if k1 == k2 {
@@ -543,7 +542,7 @@ func (n *NodeInfo) RemovePod(pod *v1.Pod) error {
 	for i := range n.pods {
 		k2, err := GetPodKey(n.pods[i])
 		if err != nil {
-			glog.Errorf("Cannot get pod key, err: %v", err)
+			klog.Errorf("Cannot get pod key, err: %v", err)
 			continue
 		}
 		if k1 == k2 {
