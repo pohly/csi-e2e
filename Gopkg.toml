@@ -31,7 +31,8 @@
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  branch = "master"
+  branch = "e2e-storage-tests"
+  source = "github.com/pohly/kubernetes"
 
 [[override]]
   name = "k8s.io/apimachinery"

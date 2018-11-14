@@ -31,8 +31,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/storage/drivers"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
+	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 )
 
@@ -48,6 +48,9 @@ type StorageClassTest struct {
 	ExpectedSize       string
 	PvCheck            func(volume *v1.PersistentVolume) error
 	NodeName           string
+	NodeSelector       map[string]string
+	SecondNodeName     string
+	SecondNodeSelector map[string]string
 	SkipWriteReadCheck bool
 	VolumeMode         *v1.PersistentVolumeMode
 }
@@ -74,33 +77,33 @@ func (p *provisioningTestSuite) getTestSuiteInfo() TestSuiteInfo {
 	return p.tsInfo
 }
 
-func (p *provisioningTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver drivers.TestDriver) {
+func (p *provisioningTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver testdriver.TestDriver) {
 }
 
-func createProvisioningTestInput(driver drivers.TestDriver, pattern testpatterns.TestPattern) (provisioningTestResource, provisioningTestInput) {
+func createProvisioningTestInput(driver testdriver.TestDriver, pattern testpatterns.TestPattern) (provisioningTestResource, provisioningTestInput) {
 	// Setup test resource for driver and testpattern
 	resource := provisioningTestResource{}
 	resource.setupResource(driver, pattern)
 
 	input := provisioningTestInput{
 		testCase: StorageClassTest{
-			ClaimSize:    resource.claimSize,
-			ExpectedSize: resource.claimSize,
+			ClaimSize:          resource.claimSize,
+			ExpectedSize:       resource.claimSize,
+			NodeName:           driver.GetDriverInfo().Config.ClientNodeName,
+			NodeSelector:       driver.GetDriverInfo().Config.ClientNodeSelector,
+			SecondNodeName:     driver.GetDriverInfo().Config.SecondClientNodeName,
+			SecondNodeSelector: driver.GetDriverInfo().Config.SecondClientNodeSelector,
 		},
-		cs:    driver.GetDriverInfo().Framework.ClientSet,
+		cs:    driver.GetDriverInfo().Config.Framework.ClientSet,
 		pvc:   resource.pvc,
 		sc:    resource.sc,
 		dInfo: driver.GetDriverInfo(),
 	}
 
-	if driver.GetDriverInfo().Config.ClientNodeName != "" {
-		input.testCase.NodeName = driver.GetDriverInfo().Config.ClientNodeName
-	}
-
 	return resource, input
 }
 
-func (p *provisioningTestSuite) execTest(driver drivers.TestDriver, pattern testpatterns.TestPattern) {
+func (p *provisioningTestSuite) execTest(driver testdriver.TestDriver, pattern testpatterns.TestPattern) {
 	Context(getTestNameStr(p, pattern), func() {
 		var (
 			resource     provisioningTestResource
@@ -132,7 +135,7 @@ func (p *provisioningTestSuite) execTest(driver drivers.TestDriver, pattern test
 }
 
 type provisioningTestResource struct {
-	driver drivers.TestDriver
+	driver testdriver.TestDriver
 
 	claimSize string
 	sc        *storage.StorageClass
@@ -141,18 +144,18 @@ type provisioningTestResource struct {
 
 var _ TestResource = &provisioningTestResource{}
 
-func (p *provisioningTestResource) setupResource(driver drivers.TestDriver, pattern testpatterns.TestPattern) {
+func (p *provisioningTestResource) setupResource(driver testdriver.TestDriver, pattern testpatterns.TestPattern) {
 	// Setup provisioningTest resource
 	switch pattern.VolType {
 	case testpatterns.DynamicPV:
-		if dDriver, ok := driver.(drivers.DynamicPVTestDriver); ok {
+		if dDriver, ok := driver.(testdriver.DynamicPVTestDriver); ok {
 			p.sc = dDriver.GetDynamicProvisionStorageClass("")
 			if p.sc == nil {
 				framework.Skipf("Driver %q does not define Dynamic Provision StorageClass - skipping", driver.GetDriverInfo().Name)
 			}
 			p.driver = driver
-			p.claimSize = "5Gi"
-			p.pvc = getClaim(p.claimSize, driver.GetDriverInfo().Framework.Namespace.Name)
+			p.claimSize = dDriver.GetClaimSize()
+			p.pvc = getClaim(p.claimSize, driver.GetDriverInfo().Config.Framework.Namespace.Name)
 			p.pvc.Spec.StorageClassName = &p.sc.Name
 			framework.Logf("In creating storage class object and pvc object for driver - sc: %v, pvc: %v", p.sc, p.pvc)
 		}
@@ -161,7 +164,7 @@ func (p *provisioningTestResource) setupResource(driver drivers.TestDriver, patt
 	}
 }
 
-func (p *provisioningTestResource) cleanupResource(driver drivers.TestDriver, pattern testpatterns.TestPattern) {
+func (p *provisioningTestResource) cleanupResource(driver testdriver.TestDriver, pattern testpatterns.TestPattern) {
 }
 
 type provisioningTestInput struct {
@@ -169,7 +172,7 @@ type provisioningTestInput struct {
 	cs       clientset.Interface
 	pvc      *v1.PersistentVolumeClaim
 	sc       *storage.StorageClass
-	dInfo    *drivers.DriverInfo
+	dInfo    *testdriver.DriverInfo
 }
 
 func testProvisioning(input *provisioningTestInput) {
@@ -281,10 +284,18 @@ func TestDynamicProvisioning(t StorageClassTest, client clientset.Interface, cla
 			command += fmt.Sprintf(" && ( mount | grep 'on /mnt/test' | awk '{print $6}' | sed 's/^(/,/; s/)$/,/' | grep -q ,%s, )", option)
 		}
 		command += " || (mount | grep 'on /mnt/test'; false)"
-		runInPodWithVolume(client, claim.Namespace, claim.Name, t.NodeName, command)
+		nodeName := t.NodeName
+		nodeSelector := t.NodeSelector
+		runInPodWithVolume(client, claim.Namespace, claim.Name, "-first", nodeName, nodeSelector, command)
 
 		By("checking the created volume is readable and retains data")
-		runInPodWithVolume(client, claim.Namespace, claim.Name, t.NodeName, "grep 'hello world' /mnt/test/data")
+		if t.SecondNodeName != "" {
+			nodeName = t.SecondNodeName
+		}
+		if len(t.SecondNodeSelector) > 0 {
+			nodeSelector = t.SecondNodeSelector
+		}
+		runInPodWithVolume(client, claim.Namespace, claim.Name, "-second", nodeName, nodeSelector, "grep 'hello world' /mnt/test/data")
 	}
 	By(fmt.Sprintf("deleting claim %q/%q", claim.Namespace, claim.Name))
 	framework.ExpectNoError(client.CoreV1().PersistentVolumeClaims(claim.Namespace).Delete(claim.Name, nil))
@@ -305,16 +316,18 @@ func TestDynamicProvisioning(t StorageClassTest, client clientset.Interface, cla
 }
 
 // runInPodWithVolume runs a command in a pod with given claim mounted to /mnt directory.
-func runInPodWithVolume(c clientset.Interface, ns, claimName, nodeName, command string) {
+func runInPodWithVolume(c clientset.Interface, ns, claimName, suffix, nodeName string, nodeSelector map[string]string, command string) {
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Pod",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: "pvc-volume-tester-",
+			Name: "pvc-volume-tester" + suffix,
 		},
 		Spec: v1.PodSpec{
+			NodeName:     nodeName,
+			NodeSelector: nodeSelector,
 			Containers: []v1.Container{
 				{
 					Name:    "volume-tester",
@@ -344,9 +357,6 @@ func runInPodWithVolume(c clientset.Interface, ns, claimName, nodeName, command 
 		},
 	}
 
-	if len(nodeName) != 0 {
-		pod.Spec.NodeName = nodeName
-	}
 	pod, err := c.CoreV1().Pods(ns).Create(pod)
 	framework.ExpectNoError(err, "Failed to create pod: %v", err)
 	defer func() {

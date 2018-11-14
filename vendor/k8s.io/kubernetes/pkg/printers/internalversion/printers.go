@@ -86,7 +86,6 @@ func AddHandlers(h printers.PrintHandler) {
 		{Name: "IP", Type: "string", Priority: 1, Description: apiv1.PodStatus{}.SwaggerDoc()["podIP"]},
 		{Name: "Node", Type: "string", Priority: 1, Description: apiv1.PodSpec{}.SwaggerDoc()["nodeName"]},
 		{Name: "Nominated Node", Type: "string", Priority: 1, Description: apiv1.PodStatus{}.SwaggerDoc()["nominatedNodeName"]},
-		{Name: "Readiness Gates", Type: "string", Priority: 1, Description: apiv1.PodSpec{}.SwaggerDoc()["readinessGates"]},
 	}
 	h.TableHandler(podColumnDefinitions, printPodList)
 	h.TableHandler(podColumnDefinitions, printPod)
@@ -203,7 +202,8 @@ func AddHandlers(h printers.PrintHandler) {
 
 	statefulSetColumnDefinitions := []metav1beta1.TableColumnDefinition{
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
-		{Name: "Ready", Type: "string", Description: "Number of the pod with ready state"},
+		{Name: "Desired", Type: "string", Description: appsv1beta1.StatefulSetSpec{}.SwaggerDoc()["replicas"]},
+		{Name: "Current", Type: "string", Description: appsv1beta1.StatefulSetStatus{}.SwaggerDoc()["replicas"]},
 		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
 		{Name: "Containers", Type: "string", Priority: 1, Description: "Names of each container in the template."},
 		{Name: "Images", Type: "string", Priority: 1, Description: "Images referenced by each container in the template."},
@@ -312,7 +312,8 @@ func AddHandlers(h printers.PrintHandler) {
 
 	deploymentColumnDefinitions := []metav1beta1.TableColumnDefinition{
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
-		{Name: "Ready", Type: "string", Description: "Number of the pod with ready state"},
+		{Name: "Desired", Type: "string", Description: extensionsv1beta1.DeploymentSpec{}.SwaggerDoc()["replicas"]},
+		{Name: "Current", Type: "string", Description: extensionsv1beta1.DeploymentStatus{}.SwaggerDoc()["replicas"]},
 		{Name: "Up-to-date", Type: "string", Description: extensionsv1beta1.DeploymentStatus{}.SwaggerDoc()["updatedReplicas"]},
 		{Name: "Available", Type: "string", Description: extensionsv1beta1.DeploymentStatus{}.SwaggerDoc()["availableReplicas"]},
 		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
@@ -662,11 +663,11 @@ func printPod(pod *api.Pod, options printers.PrintOptions) ([]metav1beta1.TableR
 	}
 
 	row.Cells = append(row.Cells, pod.Name, fmt.Sprintf("%d/%d", readyContainers, totalContainers), reason, int64(restarts), translateTimestampSince(pod.CreationTimestamp))
+
 	if options.Wide {
 		nodeName := pod.Spec.NodeName
 		nominatedNodeName := pod.Status.NominatedNodeName
 		podIP := pod.Status.PodIP
-
 		if podIP == "" {
 			podIP = "<none>"
 		}
@@ -676,24 +677,7 @@ func printPod(pod *api.Pod, options printers.PrintOptions) ([]metav1beta1.TableR
 		if nominatedNodeName == "" {
 			nominatedNodeName = "<none>"
 		}
-
-		readinessGates := "<none>"
-		if len(pod.Spec.ReadinessGates) > 0 {
-			trueConditions := 0
-			for _, readinessGate := range pod.Spec.ReadinessGates {
-				conditionType := readinessGate.ConditionType
-				for _, condition := range pod.Status.Conditions {
-					if condition.Type == conditionType {
-						if condition.Status == api.ConditionTrue {
-							trueConditions += 1
-						}
-						break
-					}
-				}
-			}
-			readinessGates = fmt.Sprintf("%d/%d", trueConditions, len(pod.Spec.ReadinessGates))
-		}
-		row.Cells = append(row.Cells, podIP, nodeName, nominatedNodeName, readinessGates)
+		row.Cells = append(row.Cells, podIP, nodeName, nominatedNodeName)
 	}
 
 	return []metav1beta1.TableRow{row}, nil
@@ -1057,9 +1041,9 @@ func printStatefulSet(obj *apps.StatefulSet, options printers.PrintOptions) ([]m
 		Object: runtime.RawExtension{Object: obj},
 	}
 	desiredReplicas := obj.Spec.Replicas
-	readyReplicas := obj.Status.ReadyReplicas
+	currentReplicas := obj.Status.Replicas
 	createTime := translateTimestampSince(obj.CreationTimestamp)
-	row.Cells = append(row.Cells, obj.Name, fmt.Sprintf("%d/%d", int64(readyReplicas), int64(desiredReplicas)), createTime)
+	row.Cells = append(row.Cells, obj.Name, int64(desiredReplicas), int64(currentReplicas), createTime)
 	if options.Wide {
 		names, images := layoutContainerCells(obj.Spec.Template.Spec.Containers)
 		row.Cells = append(row.Cells, names, images)
@@ -1569,8 +1553,8 @@ func printDeployment(obj *apps.Deployment, options printers.PrintOptions) ([]met
 		Object: runtime.RawExtension{Object: obj},
 	}
 	desiredReplicas := obj.Spec.Replicas
+	currentReplicas := obj.Status.Replicas
 	updatedReplicas := obj.Status.UpdatedReplicas
-	readyReplicas := obj.Status.ReadyReplicas
 	availableReplicas := obj.Status.AvailableReplicas
 	age := translateTimestampSince(obj.CreationTimestamp)
 	containers := obj.Spec.Template.Spec.Containers
@@ -1579,7 +1563,7 @@ func printDeployment(obj *apps.Deployment, options printers.PrintOptions) ([]met
 		// this shouldn't happen if LabelSelector passed validation
 		return nil, err
 	}
-	row.Cells = append(row.Cells, obj.Name, fmt.Sprintf("%d/%d", int64(readyReplicas), int64(desiredReplicas)), int64(updatedReplicas), int64(availableReplicas), age)
+	row.Cells = append(row.Cells, obj.Name, int64(desiredReplicas), int64(currentReplicas), int64(updatedReplicas), int64(availableReplicas), age)
 	if options.Wide {
 		containers, images := layoutContainerCells(containers)
 		row.Cells = append(row.Cells, containers, images, selector.String())

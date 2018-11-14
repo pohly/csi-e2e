@@ -35,8 +35,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/storage/drivers"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
+	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 )
 
@@ -73,14 +73,14 @@ func (t *volumeIOTestSuite) getTestSuiteInfo() TestSuiteInfo {
 	return t.tsInfo
 }
 
-func (t *volumeIOTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver drivers.TestDriver) {
+func (t *volumeIOTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver testdriver.TestDriver) {
 }
 
 func createVolumeIOTestInput(pattern testpatterns.TestPattern, resource genericVolumeTestResource) volumeIOTestInput {
 	var fsGroup *int64
 	driver := resource.driver
 	dInfo := driver.GetDriverInfo()
-	f := dInfo.Framework
+	f := dInfo.Config.Framework
 	fileSizes := createFileSizes(dInfo.MaxFileSize)
 	volSource := resource.volSource
 
@@ -96,7 +96,7 @@ func createVolumeIOTestInput(pattern testpatterns.TestPattern, resource genericV
 	return volumeIOTestInput{
 		f:         f,
 		name:      dInfo.Name,
-		config:    dInfo.Config,
+		config:    &dInfo.Config,
 		volSource: *volSource,
 		testFile:  fmt.Sprintf("%s_io_test_%s", dInfo.Name, f.Namespace.Name),
 		podSec: v1.PodSecurityContext{
@@ -106,7 +106,7 @@ func createVolumeIOTestInput(pattern testpatterns.TestPattern, resource genericV
 	}
 }
 
-func (t *volumeIOTestSuite) execTest(driver drivers.TestDriver, pattern testpatterns.TestPattern) {
+func (t *volumeIOTestSuite) execTest(driver testdriver.TestDriver, pattern testpatterns.TestPattern) {
 	Context(getTestNameStr(t, pattern), func() {
 		var (
 			resource     genericVolumeTestResource
@@ -141,7 +141,7 @@ func (t *volumeIOTestSuite) execTest(driver drivers.TestDriver, pattern testpatt
 type volumeIOTestInput struct {
 	f         *framework.Framework
 	name      string
-	config    framework.VolumeTestConfig
+	config    *testdriver.TestConfig
 	volSource v1.VolumeSource
 	testFile  string
 	podSec    v1.PodSecurityContext
@@ -153,7 +153,7 @@ func execTestVolumeIO(input *volumeIOTestInput) {
 		f := input.f
 		cs := f.ClientSet
 
-		err := testVolumeIO(f, cs, input.config, input.volSource, &input.podSec, input.testFile, input.fileSizes)
+		err := testVolumeIO(f, cs, convertTestConfig(input.config), input.volSource, &input.podSec, input.testFile, input.fileSizes)
 		Expect(err).NotTo(HaveOccurred())
 	})
 }

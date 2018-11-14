@@ -19,6 +19,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"k8s.io/api/core/v1"
@@ -27,9 +28,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
-	"k8s.io/kubernetes/test/e2e/storage/drivers"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
 	"k8s.io/kubernetes/test/e2e/storage/testsuites"
+	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 
 	. "github.com/onsi/ginkgo"
@@ -90,13 +91,11 @@ var _ = Describe("CSI Volumes", func() {
 	})
 
 	// List of test drivers to be tested against.
-	var csiTestDrivers = []func() drivers.TestDriver{
-		// hostpath driver - only works on single node clusters at the moment!
-		// Support for multi-node clusters will be added once we can use the
-		// config API from https://github.com/kubernetes/kubernetes/pull/70962
-		func() drivers.TestDriver {
+	var csiTestDrivers = []func() testdriver.TestDriver{
+		// hostpath driver
+		func() testdriver.TestDriver {
 			return &manifestDriver{
-				driverInfo: drivers.DriverInfo{
+				driverInfo: testdriver.DriverInfo{
 					Name:        "csi-hostpath",
 					MaxFileSize: testpatterns.FileSizeMedium,
 					SupportedFsType: sets.NewString(
@@ -105,6 +104,11 @@ var _ = Describe("CSI Volumes", func() {
 					IsPersistent:       true,
 					IsFsGroupSupported: false,
 					IsBlockSupported:   false,
+
+					Config: &testdriver.TestConfig{
+						Framework: f,
+						Prefix:    "csi",
+					},
 				},
 				manifests: []string{
 					"test/e2e/storage/manifests/driver-registrar/rbac.yaml",
@@ -124,6 +128,16 @@ var _ = Describe("CSI Volumes", func() {
 					ProvisionerContainerName: "csi-provisioner",
 				},
 				claimSize: "1Mi",
+
+				// The actual node on which the driver and the test pods run must
+				// be set at runtime because it cannot be determined in advance.
+				beforeEach: func(m *manifestDriver) {
+					nodes := framework.GetReadySchedulableNodesOrDie(cs)
+					node := nodes.Items[rand.Intn(len(nodes.Items))]
+					m.driverInfo.Config.ClientNodeName = node.Name
+					m.patchOptions.NodeName = node.Name
+
+				},
 			}
 		},
 	}
@@ -139,24 +153,11 @@ var _ = Describe("CSI Volumes", func() {
 
 	for _, initDriver := range csiTestDrivers {
 		curDriver := initDriver()
-		Context(drivers.GetDriverNameWithFeatureTags(curDriver), func() {
+		Context(testsuites.GetDriverNameWithFeatureTags(curDriver), func() {
 			driver := curDriver
 
 			BeforeEach(func() {
 				// setupDriver
-				drivers.SetCommonDriverParameters(driver, f,
-					// The main purpose of this call is to tell the
-					// driver what the current namespace is. That piece of
-					// information is dynamic and changes for each
-					// individual test. The rest of the VolumeTestConfig
-					// content is mostly ignored. https://github.com/kubernetes/kubernetes/pull/70862
-					// replaces it with a config that has just the
-					// fields that really matter.
-					framework.VolumeTestConfig{
-						Namespace: ns.Name,
-						Prefix:    "csi",
-					},
-				)
 				driver.CreateDriver()
 			})
 
@@ -165,9 +166,7 @@ var _ = Describe("CSI Volumes", func() {
 				driver.CleanupDriver()
 			})
 
-			testsuites.RunTestSuite(f,
-				framework.VolumeTestConfig{}, // not actually used by method
-				driver, csiTestSuites, csiTunePattern)
+			testsuites.RunTestSuite(f, driver, csiTestSuites, csiTunePattern)
 		})
 	}
 })
@@ -179,23 +178,24 @@ var _ = Describe("CSI Volumes", func() {
 // driver renaming, tests can run in parallel because each test
 // deployes and removes its own driver instance.
 type manifestDriver struct {
-	driverInfo   drivers.DriverInfo
+	driverInfo   testdriver.DriverInfo
 	patchOptions utils.PatchCSIOptions
 	manifests    []string
 	scManifest   string
 	claimSize    string
+	beforeEach   func(m *manifestDriver)
 	cleanup      func()
 }
 
-var _ drivers.TestDriver = &manifestDriver{}
-var _ drivers.DynamicPVTestDriver = &manifestDriver{}
+var _ testdriver.TestDriver = &manifestDriver{}
+var _ testdriver.DynamicPVTestDriver = &manifestDriver{}
 
-func (m *manifestDriver) GetDriverInfo() *drivers.DriverInfo {
+func (m *manifestDriver) GetDriverInfo() *testdriver.DriverInfo {
 	return &m.driverInfo
 }
 
 func (m *manifestDriver) GetDynamicProvisionStorageClass(fsType string) *storagev1.StorageClass {
-	f := m.driverInfo.Framework
+	f := m.driverInfo.Config.Framework
 
 	items, err := f.LoadFromManifests(m.scManifest)
 	Expect(err).NotTo(HaveOccurred())
@@ -219,7 +219,10 @@ func (m *manifestDriver) GetClaimSize() string {
 
 func (m *manifestDriver) CreateDriver() {
 	By(fmt.Sprintf("deploying %s driver", m.driverInfo.Name))
-	f := m.driverInfo.Framework
+	if m.beforeEach != nil {
+		m.beforeEach(m)
+	}
+	f := m.driverInfo.Config.Framework
 
 	cleanup, err := f.CreateFromManifests(func(item interface{}) error {
 		return utils.PatchCSIDeployment(f, m.finalPatchOptions(), item)
@@ -243,7 +246,7 @@ func (m *manifestDriver) finalPatchOptions() utils.PatchCSIOptions {
 	o := m.patchOptions
 	// Unique name not available yet when configuring the driver.
 	if strings.HasSuffix(o.NewDriverName, "-") {
-		o.NewDriverName += m.driverInfo.Framework.UniqueName
+		o.NewDriverName += m.driverInfo.Config.Framework.UniqueName
 	}
 	return o
 }

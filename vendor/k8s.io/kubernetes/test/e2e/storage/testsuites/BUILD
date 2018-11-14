@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "base.go",
+        "driveroperations.go",
         "provisioning.go",
         "subpath.go",
         "volume_io.go",
@@ -24,8 +25,8 @@ go_library(
         "//staging/src/k8s.io/apimachinery/pkg/util/wait:go_default_library",
         "//staging/src/k8s.io/client-go/kubernetes:go_default_library",
         "//test/e2e/framework:go_default_library",
-        "//test/e2e/storage/drivers:go_default_library",
         "//test/e2e/storage/testpatterns:go_default_library",
+        "//test/e2e/storage/testsuites/testdriver:go_default_library",
         "//test/e2e/storage/utils:go_default_library",
         "//test/utils/image:go_default_library",
         "//vendor/github.com/onsi/ginkgo:go_default_library",
@@ -42,7 +43,10 @@ filegroup(
 
 filegroup(
     name = "all-srcs",
-    srcs = [":package-srcs"],
+    srcs = [
+        ":package-srcs",
+        "//test/e2e/storage/testsuites/testdriver:all-srcs",
+    ],
     tags = ["automanaged"],
     visibility = ["//visibility:public"],
 )

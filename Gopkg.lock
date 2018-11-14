@@ -595,31 +595,6 @@
   version = "v1.0.3"
 
 [[projects]]
-  digest = "1:ee0b246399296b6a34a6e0a482f1ad2db96a3c8a14fe73e34fcfeab3fc547c9d"
-  name = "github.com/vmware/govmomi"
-  packages = [
-    ".",
-    "find",
-    "list",
-    "nfc",
-    "object",
-    "property",
-    "session",
-    "task",
-    "vim25",
-    "vim25/debug",
-    "vim25/methods",
-    "vim25/mo",
-    "vim25/progress",
-    "vim25/soap",
-    "vim25/types",
-    "vim25/xml",
-  ]
-  pruneopts = "UT"
-  revision = "3617f28d167d448f93f282a867870f109516d2a5"
-  version = "v0.19.0"
-
-[[projects]]
   branch = "master"
   digest = "1:927f26af73f68ccf88a1db49336ce3c6251e5cff9eedcc4e0f06c437486d4cb0"
   name = "golang.org/x/crypto"
@@ -794,19 +769,6 @@
   version = "v1.4.7"
 
 [[projects]]
-  digest = "1:38cb4759428493e0b02eade2f8d2920eb55a8fb35acb45de3247f0fbeab81b78"
-  name = "gopkg.in/gcfg.v1"
-  packages = [
-    ".",
-    "scanner",
-    "token",
-    "types",
-  ]
-  pruneopts = "UT"
-  revision = "61b2c08bc8f6068f7c5ca684372f9a6cb1c45ebe"
-  version = "v1.2.3"
-
-[[projects]]
   digest = "1:2d1fbdc6777e5408cabeb02bf336305e724b925ff4546ded0fa8715a7267922a"
   name = "gopkg.in/inf.v0"
   packages = ["."]
@@ -842,14 +804,6 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "dd632973f1e7218eb1089048e0798ec9ae7dceb8"
-
-[[projects]]
-  digest = "1:78d374b493e747afa9fbb2119687e3740a7fb8d0ebabddfef0a012593aaecbb3"
-  name = "gopkg.in/warnings.v0"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "ec4a0fea49c7b46c2aeb0b51aac55779c607e52b"
-  version = "v0.1.2"
 
 [[projects]]
   digest = "1:342378ac4dcb378a5448dd723f0784ae519383532f5e70ade24132c4c8693202"
@@ -1346,8 +1300,8 @@
   revision = "c59034cc13d587f5ef4e85ca0ade0c1866ae8e1d"
 
 [[projects]]
-  branch = "master"
-  digest = "1:aec6153e39fade396446895e6a71a214095bf248863eb89a29c885a306fac295"
+  branch = "e2e-storage-tests"
+  digest = "1:a2d3e278dfbc0d93a247024b68e529bf864289f91f5aaf66cf7a9bc7a511eee8"
   name = "k8s.io/kubernetes"
   packages = [
     "cmd/kubeadm/app/apis/kubeadm",
@@ -1542,17 +1496,17 @@
     "test/e2e/framework/testfiles",
     "test/e2e/manifest",
     "test/e2e/perftype",
-    "test/e2e/storage/drivers",
     "test/e2e/storage/testpatterns",
     "test/e2e/storage/testsuites",
+    "test/e2e/storage/testsuites/testdriver",
     "test/e2e/storage/utils",
-    "test/e2e/storage/vsphere",
     "test/utils",
     "test/utils/image",
     "third_party/forked/golang/expansion",
   ]
   pruneopts = "UT"
-  revision = "3e6d414b55272fe52b817474fecd48d4c188486f"
+  revision = "45e14bb4f16ec2274d8df992fb0b4c129dae8e51"
+  source = "github.com/pohly/kubernetes"
 
 [[projects]]
   branch = "master"
@@ -1579,7 +1533,6 @@
   input-imports = [
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
-    "k8s.io/api/apps/v1",
     "k8s.io/api/core/v1",
     "k8s.io/api/storage/v1",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
@@ -1591,9 +1544,9 @@
     "k8s.io/kubernetes/test/e2e/framework/podlogs",
     "k8s.io/kubernetes/test/e2e/framework/testfiles",
     "k8s.io/kubernetes/test/e2e/manifest",
-    "k8s.io/kubernetes/test/e2e/storage/drivers",
     "k8s.io/kubernetes/test/e2e/storage/testpatterns",
     "k8s.io/kubernetes/test/e2e/storage/testsuites",
+    "k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver",
     "k8s.io/kubernetes/test/e2e/storage/utils",
     "k8s.io/kubernetes/test/utils",
   ]

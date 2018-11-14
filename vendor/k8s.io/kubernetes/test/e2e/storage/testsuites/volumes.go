@@ -26,8 +26,8 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/e2e/storage/drivers"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
+	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 )
 
 type volumesTestSuite struct {
@@ -67,7 +67,7 @@ func (t *volumesTestSuite) getTestSuiteInfo() TestSuiteInfo {
 	return t.tsInfo
 }
 
-func (t *volumesTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver drivers.TestDriver) {
+func (t *volumesTestSuite) skipUnsupportedTest(pattern testpatterns.TestPattern, driver testdriver.TestDriver) {
 	dInfo := driver.GetDriverInfo()
 	if !dInfo.IsPersistent {
 		framework.Skipf("Driver %q does not provide persistency - skipping", dInfo.Name)
@@ -78,7 +78,7 @@ func createVolumesTestInput(pattern testpatterns.TestPattern, resource genericVo
 	var fsGroup *int64
 	driver := resource.driver
 	dInfo := driver.GetDriverInfo()
-	f := dInfo.Framework
+	f := dInfo.Config.Framework
 	volSource := resource.volSource
 
 	if volSource == nil {
@@ -93,7 +93,7 @@ func createVolumesTestInput(pattern testpatterns.TestPattern, resource genericVo
 	return volumesTestInput{
 		f:       f,
 		name:    dInfo.Name,
-		config:  dInfo.Config,
+		config:  &dInfo.Config,
 		fsGroup: fsGroup,
 		tests: []framework.VolumeTest{
 			{
@@ -107,7 +107,7 @@ func createVolumesTestInput(pattern testpatterns.TestPattern, resource genericVo
 	}
 }
 
-func (t *volumesTestSuite) execTest(driver drivers.TestDriver, pattern testpatterns.TestPattern) {
+func (t *volumesTestSuite) execTest(driver testdriver.TestDriver, pattern testpatterns.TestPattern) {
 	Context(getTestNameStr(t, pattern), func() {
 		var (
 			resource     genericVolumeTestResource
@@ -142,7 +142,7 @@ func (t *volumesTestSuite) execTest(driver drivers.TestDriver, pattern testpatte
 type volumesTestInput struct {
 	f       *framework.Framework
 	name    string
-	config  framework.VolumeTestConfig
+	config  *testdriver.TestConfig
 	fsGroup *int64
 	tests   []framework.VolumeTest
 }
@@ -151,10 +151,11 @@ func testVolumes(input *volumesTestInput) {
 	It("should be mountable", func() {
 		f := input.f
 		cs := f.ClientSet
-		defer framework.VolumeTestCleanup(f, input.config)
+		defer framework.VolumeTestCleanup(f, convertTestConfig(input.config))
 
 		volumeTest := input.tests
-		framework.InjectHtml(cs, input.config, volumeTest[0].Volume, volumeTest[0].ExpectedContent)
-		framework.TestVolumeClient(cs, input.config, input.fsGroup, input.tests)
+		config := convertTestConfig(input.config)
+		framework.InjectHtml(cs, config, volumeTest[0].Volume, volumeTest[0].ExpectedContent)
+		framework.TestVolumeClient(cs, config, input.fsGroup, input.tests)
 	})
 }
