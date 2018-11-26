@@ -105,7 +105,7 @@ var _ = Describe("CSI Volumes", func() {
 					IsFsGroupSupported: false,
 					IsBlockSupported:   false,
 
-					Config: &testdriver.TestConfig{
+					Config: testdriver.TestConfig{
 						Framework: f,
 						Prefix:    "csi",
 					},
@@ -127,7 +127,7 @@ var _ = Describe("CSI Volumes", func() {
 					DriverContainerName:      "hostpath",
 					ProvisionerContainerName: "csi-provisioner",
 				},
-				claimSize: "1Mi",
+				claimSize: "1Mi", 
 
 				// The actual node on which the driver and the test pods run must
 				// be set at runtime because it cannot be determined in advance.

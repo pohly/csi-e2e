@@ -31,7 +31,7 @@ import (
 	// same underlying `testsuites` package to run
 	// the same tests against test drivers that we
 	// define.
-	_ "github.com/kubernetes-csi/csi-e2e/test/e2e/storage"
+	_ "github.com/mathu97/csi-e2e/test/e2e/storage"
 )
 
 func init() {
