@@ -35,7 +35,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-)
+		)
 
 func csiTunePattern(patterns []testpatterns.TestPattern) []testpatterns.TestPattern {
 	tunedPatterns := []testpatterns.TestPattern{}
@@ -94,14 +94,16 @@ var _ = Describe("CSI Volumes", func() {
 	var csiTestDrivers = []func() testdriver.TestDriver{
 		// hostpath driver
 		func() testdriver.TestDriver {
-			return &manifestDriver{
-				driverInfo: testdriver.DriverInfo{
+			driver_manifest := &manifestDriver{
+				DriverInfo: testdriver.DriverInfo{
 					Name:        "csi-hostpath",
 					MaxFileSize: testpatterns.FileSizeMedium,
 					SupportedFsType: sets.NewString(
 						"", // Default fsType
 					),
-					IsPersistent:       true,
+					IsPersistent:
+
+						true,
 					IsFsGroupSupported: false,
 					IsBlockSupported:   false,
 
@@ -134,21 +136,28 @@ var _ = Describe("CSI Volumes", func() {
 				beforeEach: func(m *manifestDriver) {
 					nodes := framework.GetReadySchedulableNodesOrDie(cs)
 					node := nodes.Items[rand.Intn(len(nodes.Items))]
-					m.driverInfo.Config.ClientNodeName = node.Name
+					m.DriverInfo.Config.ClientNodeName = node.Name
 					m.patchOptions.NodeName = node.Name
 
 				},
 			}
+
+			//output, err := json.MarshalIndent(driver_manifest.DriverInfo, "", "\t")
+			//if err != nil {
+			//	return &manifestDriver{}
+			//}
+			//ioutil.WriteFile("driver_manifest.json", output, 777)
+			return driver_manifest
 		},
 	}
 
 	// List of test suites to be executed for each driver.
 	var csiTestSuites = []func() testsuites.TestSuite{
-		testsuites.InitVolumesTestSuite,
+		//testsuites.InitVolumesTestSuite,
 		testsuites.InitVolumeIOTestSuite,
-		testsuites.InitVolumeModeTestSuite,
-		testsuites.InitSubPathTestSuite,
-		testsuites.InitProvisioningTestSuite,
+		//testsuites.InitVolumeModeTestSuite,
+		//testsuites.InitSubPathTestSuite,
+		//testsuites.InitProvisioningTestSuite,
 	}
 
 	for _, initDriver := range csiTestDrivers {
@@ -178,7 +187,7 @@ var _ = Describe("CSI Volumes", func() {
 // driver renaming, tests can run in parallel because each test
 // deployes and removes its own driver instance.
 type manifestDriver struct {
-	driverInfo   testdriver.DriverInfo
+	DriverInfo   testdriver.DriverInfo
 	patchOptions utils.PatchCSIOptions
 	manifests    []string
 	scManifest   string
@@ -191,11 +200,11 @@ var _ testdriver.TestDriver = &manifestDriver{}
 var _ testdriver.DynamicPVTestDriver = &manifestDriver{}
 
 func (m *manifestDriver) GetDriverInfo() *testdriver.DriverInfo {
-	return &m.driverInfo
+	return &m.DriverInfo
 }
 
 func (m *manifestDriver) GetDynamicProvisionStorageClass(fsType string) *storagev1.StorageClass {
-	f := m.driverInfo.Config.Framework
+	f := m.DriverInfo.Config.Framework
 
 	items, err := f.LoadFromManifests(m.scManifest)
 	Expect(err).NotTo(HaveOccurred())
@@ -218,11 +227,11 @@ func (m *manifestDriver) GetClaimSize() string {
 }
 
 func (m *manifestDriver) CreateDriver() {
-	By(fmt.Sprintf("deploying %s driver", m.driverInfo.Name))
+	By(fmt.Sprintf("deploying %s driver", m.DriverInfo.Name))
 	if m.beforeEach != nil {
 		m.beforeEach(m)
 	}
-	f := m.driverInfo.Config.Framework
+	f := m.DriverInfo.Config.Framework
 
 	cleanup, err := f.CreateFromManifests(func(item interface{}) error {
 		return utils.PatchCSIDeployment(f, m.finalPatchOptions(), item)
@@ -237,7 +246,7 @@ func (m *manifestDriver) CreateDriver() {
 
 func (m *manifestDriver) CleanupDriver() {
 	if m.cleanup != nil {
-		By(fmt.Sprintf("uninstalling %s driver", m.driverInfo.Name))
+		By(fmt.Sprintf("uninstalling %s driver", m.DriverInfo.Name))
 		m.cleanup()
 	}
 }
@@ -246,7 +255,7 @@ func (m *manifestDriver) finalPatchOptions() utils.PatchCSIOptions {
 	o := m.patchOptions
 	// Unique name not available yet when configuring the driver.
 	if strings.HasSuffix(o.NewDriverName, "-") {
-		o.NewDriverName += m.driverInfo.Config.Framework.UniqueName
+		o.NewDriverName += m.DriverInfo.Config.Framework.UniqueName
 	}
 	return o
 }
