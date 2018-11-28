@@ -48,7 +48,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 
 	c, err := framework.LoadClientset()
 	if err != nil {
-		framework.Failf("Error loading client: ", err)
+		framework.Failf("Error loading client: %v", err)
 	}
 
 	// Delete any namespaces except those created by the system. This ensures no
