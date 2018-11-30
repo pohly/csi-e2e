@@ -3,7 +3,7 @@
 		"Name": "csi-hostpath",
 		"FeatureTag": "",
 		"MaxFileSize": 104857600,
-		"SupportedFsType": "",
+		"SupportedFsType": [""],
 		"SupportedMountOption": null,
 		"RequiredMountOption": null,
 		"IsPersistent": true,

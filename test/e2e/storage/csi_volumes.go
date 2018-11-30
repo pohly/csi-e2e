@@ -92,7 +92,7 @@ var _ = Describe("CSI Volumes", func() {
 
 	// List of test drivers to be tested against.
 	var csiTestDrivers = []func() testdriver.TestDriver{
-		// hostpath driver
+		
 		func() testdriver.TestDriver {
 
 			fileName := "driver_manifest.json"
@@ -102,13 +102,13 @@ var _ = Describe("CSI Volumes", func() {
 			}
 
 			driverInfo := manifestObject.DriverInfo
-			fmt.Printf("Driver Name: %s\n", manifestObject.ClaimSize)
+			fmt.Printf("Driver Name: %v\n", driverInfo.SupportedFsType)
 			driver_manifest := &manifestDriver{
 				DriverInfo: testdriver.DriverInfo{
 					Name:        driverInfo.Name,
 					MaxFileSize: driverInfo.MaxFileSize,
 					SupportedFsType: sets.NewString(
-						"", // Default fsType
+						driverInfo.SupportedFsType..., // Default fsType
 					),
 					IsPersistent:       driverInfo.IsPersistent,
 					IsFsGroupSupported: driverInfo.IsFsGroupSupported,
@@ -119,24 +119,11 @@ var _ = Describe("CSI Volumes", func() {
 						Prefix:    "csi",
 					},
 				},
-				Manifests: []string{
-					"test/e2e/storage/manifests/driver-registrar/rbac.yaml",
-					"test/e2e/storage/manifests/external-attacher/rbac.yaml",
-					"test/e2e/storage/manifests/external-provisioner/rbac.yaml",
-					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-attacher.yaml",
-					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-provisioner.yaml",
-					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpathplugin.yaml",
-					"test/e2e/storage/manifests/hostpath/hostpath/e2e-test-rbac.yaml",
-				},
-				ScManifest: "test/e2e/storage/manifests/hostpath/example/usage/csi-storageclass.yaml",
+				Manifests: manifestObject.Manifests,
+				ScManifest: manifestObject.ScManifest,
 				// Enable renaming of the driver.
-				PatchOptions: utils.PatchCSIOptions{
-					OldDriverName:            "csi-hostpath",
-					NewDriverName:            "csi-hostpath-", // f.UniqueName must be added later
-					DriverContainerName:      "hostpath",
-					ProvisionerContainerName: "csi-provisioner",
-				},
-				ClaimSize: "1Mi",
+				PatchOptions: manifestObject.PatchOptions,
+				ClaimSize: manifestObject.ClaimSize,
 
 				// The actual node on which the driver and the test pods run must
 				// be set at runtime because it cannot be determined in advance.
