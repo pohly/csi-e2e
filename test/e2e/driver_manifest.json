@@ -1,0 +1,31 @@
+{
+	"DriverInfo": {
+		"Name": "csi-hostpath",
+		"FeatureTag": "",
+		"MaxFileSize": 104857600,
+		"SupportedFsType": [""],
+		"SupportedMountOption": null,
+		"RequiredMountOption": null,
+		"IsPersistent": true,
+		"IsFsGroupSupported": false,
+		"IsBlockSupported": false
+	},
+	"PatchOptions": {
+		"OldDriverName": "csi-hostpath",
+		"NewDriverName": "csi-hostpath-",
+		"DriverContainerName": "hostpath",
+		"ProvisionerContainerName": "csi-provisioner",
+		"NodeName": ""
+	},
+	"Manifests": [
+		"test/e2e/storage/manifests/driver-registrar/rbac.yaml",
+		"test/e2e/storage/manifests/external-attacher/rbac.yaml",
+		"test/e2e/storage/manifests/external-provisioner/rbac.yaml",
+		"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-attacher.yaml",
+		"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-provisioner.yaml",
+		"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpathplugin.yaml",
+		"test/e2e/storage/manifests/hostpath/hostpath/e2e-test-rbac.yaml"
+	],
+	"ScManifest": "test/e2e/storage/manifests/hostpath/example/usage/csi-storageclass.yaml",
+	"ClaimSize": "1Mi"
+}
