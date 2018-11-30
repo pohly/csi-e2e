@@ -22,19 +22,19 @@ import (
 	"math/rand"
 	"strings"
 
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-		clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/util/sets"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
 	"k8s.io/kubernetes/test/e2e/storage/testsuites"
 	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-			"k8s.io/apimachinery/pkg/util/sets"
+	"os"
 )
 
 func csiTunePattern(patterns []testpatterns.TestPattern) []testpatterns.TestPattern {
@@ -91,89 +91,89 @@ var _ = Describe("CSI Volumes", func() {
 	})
 
 	// List of test drivers to be tested against.
-	var csiTestDrivers = []func() testdriver.TestDriver{
-		
-		func() testdriver.TestDriver {
+	var csiTestDriver = func() *manifestDriver {
 
-			fileName := "driver_manifest.json"
-			manifestObject, jsonErr := getManifestJson(fileName)
-			if jsonErr!= nil{
-				framework.Failf("Error reading json manifest file: %v", jsonErr)
-			}
+		fileName := os.Getenv("DRIVER_MANIFEST")
+		manifestObject, jsonErr := getManifestJson(fileName)
+		if jsonErr != nil {
+			framework.Failf("Error reading json manifest file: %v", jsonErr)
+		}
 
-			driverInfo := manifestObject.DriverInfo
-			fmt.Printf("Driver Name: %v\n", driverInfo.SupportedFsType)
-			driver_manifest := &manifestDriver{
-				DriverInfo: testdriver.DriverInfo{
-					Name:        driverInfo.Name,
-					MaxFileSize: driverInfo.MaxFileSize,
-					SupportedFsType: sets.NewString(
-						driverInfo.SupportedFsType..., // Default fsType
-					),
-					IsPersistent:       driverInfo.IsPersistent,
-					IsFsGroupSupported: driverInfo.IsFsGroupSupported,
-					IsBlockSupported:   driverInfo.IsBlockSupported,
+		driverInfo := manifestObject.DriverInfo
+		driver_manifest := &manifestDriver{
+			DriverInfo: testdriver.DriverInfo{
+				Name:        driverInfo.Name,
+				MaxFileSize: driverInfo.MaxFileSize,
+				SupportedFsType: sets.NewString(
+					driverInfo.SupportedFsType..., // Default fsType
+				),
+				IsPersistent:       driverInfo.IsPersistent,
+				IsFsGroupSupported: driverInfo.IsFsGroupSupported,
+				IsBlockSupported:   driverInfo.IsBlockSupported,
 
-					Config: testdriver.TestConfig{
-						Framework: f,
-						Prefix:    "csi",
-					},
+				Config: testdriver.TestConfig{
+					Framework: f,
+					Prefix:    "csi",
 				},
-				Manifests: manifestObject.Manifests,
-				ScManifest: manifestObject.ScManifest,
-				// Enable renaming of the driver.
-				PatchOptions: manifestObject.PatchOptions,
-				ClaimSize: manifestObject.ClaimSize,
+			},
+			Manifests:  manifestObject.Manifests,
+			ScManifest: manifestObject.ScManifest,
+			// Enable renaming of the driver.
+			PatchOptions: manifestObject.PatchOptions,
+			ClaimSize:    manifestObject.ClaimSize,
 
-				// The actual node on which the driver and the test pods run must
-				// be set at runtime because it cannot be determined in advance.
-				beforeEach: func(m *manifestDriver) {
-					nodes := framework.GetReadySchedulableNodesOrDie(cs)
-					node := nodes.Items[rand.Intn(len(nodes.Items))]
-					m.DriverInfo.Config.ClientNodeName = node.Name
-					m.PatchOptions.NodeName = node.Name
+			// The actual node on which the driver and the test pods run must
+			// be set at runtime because it cannot be determined in advance.
+			beforeEach: func(m *manifestDriver) {
+				nodes := framework.GetReadySchedulableNodesOrDie(cs)
+				node := nodes.Items[rand.Intn(len(nodes.Items))]
+				m.DriverInfo.Config.ClientNodeName = node.Name
+				m.PatchOptions.NodeName = node.Name
 
-				},
+			},
+		}
 
-			}
-			//fmt.Printf("%v", driver_manifest)
-			//output, jsonErr := json.MarshalIndent(driver_manifest, "", "\t")
-			//if jsonErr != nil{
-			//	fmt.Printf("Print Error")
-			//}
-			//ioutil.WriteFile("driver_manifest_output.json", output, 777)
+		return driver_manifest
 
-			return driver_manifest
-		},
 	}
+
+	curDriver := csiTestDriver()
 
 	// List of test suites to be executed for each driver.
-	var csiTestSuites = []func() testsuites.TestSuite{
-		//testsuites.InitVolumesTestSuite,
-		testsuites.InitVolumeIOTestSuite,
-		//testsuites.InitVolumeModeTestSuite,
-		//testsuites.InitSubPathTestSuite,
-		//testsuites.InitProvisioningTestSuite,
+	var csiTestSuites = func() []func() testsuites.TestSuite {
+		testSuites := []func() testsuites.TestSuite{
+			//testsuites.InitVolumesTestSuite,
+			//testsuites.InitVolumeModeTestSuite,
+			//testsuites.InitSubPathTestSuite,
+			//testsuites.InitProvisioningTestSuite,
+		}
+
+		driverPatchOptions := curDriver.PatchOptions
+		if driverPatchOptions.ProvisionerContainerName != "" {
+			//Has a Provisioner
+			testSuites = append(testSuites, testsuites.InitVolumeIOTestSuite)
+		}
+
+		return testSuites
+
 	}
 
-	for _, initDriver := range csiTestDrivers {
-		curDriver := initDriver()
-		Context(testsuites.GetDriverNameWithFeatureTags(curDriver), func() {
-			driver := curDriver
+	Context(testsuites.GetDriverNameWithFeatureTags(curDriver), func() {
+		driver := curDriver
 
-			BeforeEach(func() {
-				// setupDriver
-				driver.CreateDriver()
-			})
-
-			AfterEach(func() {
-				// Cleanup driver
-				driver.CleanupDriver()
-			})
-
-			testsuites.RunTestSuite(f, driver, csiTestSuites, csiTunePattern)
+		BeforeEach(func() {
+			// setupDriver
+			driver.CreateDriver()
 		})
-	}
+
+		AfterEach(func() {
+			// Cleanup driver
+			driver.CleanupDriver()
+		})
+
+		testsuites.RunTestSuite(f, driver, csiTestSuites(), csiTunePattern)
+	})
+
 })
 
 // The manifestDriver implements the test driver interface based on
@@ -208,7 +208,7 @@ func (m *manifestDriver) GetDynamicProvisionStorageClass(fsType string) *storage
 
 	err = f.PatchItems(items...)
 	Expect(err).NotTo(HaveOccurred())
-	err = utils.PatchCSIDeployment(f, m.finalPatchOptions(), items[0])
+	err = PatchCSIDeployment(f, m.finalPatchOptions(), items[0])
 
 	sc, ok := items[0].(*storagev1.StorageClass)
 	Expect(ok).To(BeTrue(), "storage class from %s", m.ScManifest)
@@ -230,13 +230,13 @@ func (m *manifestDriver) CreateDriver() {
 	f := m.DriverInfo.Config.Framework
 
 	cleanup, err := f.CreateFromManifests(func(item interface{}) error {
-		return utils.PatchCSIDeployment(f, m.finalPatchOptions(), item)
+		return PatchCSIDeployment(f, m.finalPatchOptions(), item)
 	},
 		m.Manifests...,
 	)
 	m.cleanup = cleanup
 	if err != nil {
-		framework.Failf("deploying csi hostpath driver: %v", err)
+		framework.Failf("deploying csi driver: %v", err)
 	}
 }
 

@@ -1,0 +1,30 @@
+{
+	"DriverInfo": {
+		"Name": "csi-nfs",
+		"FeatureTag": "",
+		"MaxFileSize": 104857600,
+		"SupportedFsType": [""],
+		"SupportedMountOption": null,
+		"RequiredMountOption": null,
+		"IsPersistent": true,
+		"IsFsGroupSupported": false,
+		"IsBlockSupported": false
+	},
+	"PatchOptions": {
+		"OldDriverName": "csi-nfs",
+		"NewDriverName": "csi-nfs-",
+		"DriverContainerName": "nfs",
+		"ProvisionerContainerName": "",
+		"NodeName": ""
+	},
+	"Manifests": [
+		"test/e2e/storage/manifests/nfs/csi-attacher-nfsplugin.yaml",
+		"test/e2e/storage/manifests/nfs/csi-nodeplugin-nfsplugin.yaml",
+		"test/e2e/storage/manifests/nfs/csi-attacher-rbac.yaml",
+		"test/e2e/storage/manifests/nfs/csi-nodeplugin-rbac.yaml",
+		"test/e2e/storage/manifests/nfs/e2e-test-rbac.yaml"
+	],
+	"ScManifest": "test/e2e/storage/manifests/nfs/csi-storageclass.yaml",
+	"ClaimSize": "1Mi"
+}
+
