@@ -23,6 +23,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	goruntime "runtime"
+	"strings"
 	"time"
 
 	"k8s.io/klog"
@@ -33,7 +35,6 @@ import (
 	metav1beta1 "k8s.io/apimachinery/pkg/apis/meta/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
@@ -60,7 +61,7 @@ type RequestScope struct {
 	Trace           *utiltrace.Trace
 
 	TableConvertor rest.TableConvertor
-	OpenAPISchema  openapiproto.Schema
+	OpenAPIModels  openapiproto.Models
 
 	Resource    schema.GroupVersionResource
 	Kind        schema.GroupVersionKind
@@ -143,7 +144,7 @@ func ConnectResource(connecter rest.Connecter, scope RequestScope, admit admissi
 			}
 		}
 		requestInfo, _ := request.RequestInfoFrom(ctx)
-		metrics.RecordLongRunning(req, requestInfo, func() {
+		metrics.RecordLongRunning(req, requestInfo, metrics.APIServerComponent, func() {
 			handler, err := connecter.Connect(ctx, name, opts, &responder{scope: scope, req: req, w: w})
 			if err != nil {
 				scope.err(err, w, req)
@@ -182,10 +183,17 @@ func finishRequest(timeout time.Duration, fn resultFunc) (result runtime.Object,
 	panicCh := make(chan interface{}, 1)
 	go func() {
 		// panics don't cross goroutine boundaries, so we have to handle ourselves
-		defer utilruntime.HandleCrash(func(panicReason interface{}) {
-			// Propagate to parent goroutine
-			panicCh <- panicReason
-		})
+		defer func() {
+			panicReason := recover()
+			if panicReason != nil {
+				const size = 64 << 10
+				buf := make([]byte, size)
+				buf = buf[:goruntime.Stack(buf, false)]
+				panicReason = strings.TrimSuffix(fmt.Sprintf("%v\n%s", panicReason, string(buf)), "\n")
+				// Propagate to parent goroutine
+				panicCh <- panicReason
+			}
+		}()
 
 		if result, err := fn(); err != nil {
 			errCh <- err
@@ -272,23 +280,26 @@ func checkName(obj runtime.Object, name, namespace string, namer ScopeNamer) err
 	return nil
 }
 
-// setListSelfLink sets the self link of a list to the base URL, then sets the self links
-// on all child objects returned. Returns the number of items in the list.
-func setListSelfLink(obj runtime.Object, ctx context.Context, req *http.Request, namer ScopeNamer) (int, error) {
+// setObjectSelfLink sets the self link of an object as needed.
+func setObjectSelfLink(ctx context.Context, obj runtime.Object, req *http.Request, namer ScopeNamer) error {
 	if !meta.IsListType(obj) {
-		return 0, nil
+		requestInfo, ok := request.RequestInfoFrom(ctx)
+		if !ok {
+			return fmt.Errorf("missing requestInfo")
+		}
+		return setSelfLink(obj, requestInfo, namer)
 	}
 
 	uri, err := namer.GenerateListLink(req)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if err := namer.SetSelfLink(obj, uri); err != nil {
 		klog.V(4).Infof("Unable to set self link on object: %v", err)
 	}
 	requestInfo, ok := request.RequestInfoFrom(ctx)
 	if !ok {
-		return 0, fmt.Errorf("missing requestInfo")
+		return fmt.Errorf("missing requestInfo")
 	}
 
 	count := 0
@@ -296,7 +307,14 @@ func setListSelfLink(obj runtime.Object, ctx context.Context, req *http.Request,
 		count++
 		return setSelfLink(obj, requestInfo, namer)
 	})
-	return count, err
+
+	if count == 0 {
+		if err := meta.SetList(obj, []runtime.Object{}); err != nil {
+			return err
+		}
+	}
+
+	return err
 }
 
 func summarizeData(data []byte, maxLength int) string {

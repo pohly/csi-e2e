@@ -1,38 +1,10 @@
-# Gopkg.toml example
-#
-# Refer to https://golang.github.io/dep/docs/Gopkg.toml.html
-# for detailed Gopkg.toml documentation.
-#
-# required = ["github.com/user/thing/cmd/thing"]
-# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
-#
-# [[constraint]]
-#   name = "github.com/user/project"
-#   version = "1.0.0"
-#
-# [[constraint]]
-#   name = "github.com/user/project2"
-#   branch = "dev"
-#   source = "github.com/myfork/project2"
-#
-# [[override]]
-#   name = "github.com/x/y"
-#   version = "2.4.0"
-#
-# [prune]
-#   non-go = false
-#   go-tests = true
-#   unused-packages = true
-
-
 [prune]
   go-tests = true
   unused-packages = true
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  branch = "e2e-storage-tests"
-  source = "github.com/pohly/kubernetes"
+  branch = "master"
 
 [[override]]
   name = "k8s.io/apimachinery"
@@ -44,20 +16,39 @@
   name = "k8s.io/apiserver"
   branch = "master"
 [[override]]
-  name = "k8s.io/kube-aggregator"
+  name = "k8s.io/apiextensions-apiserver"
+  branch = "master"
+[[override]]
+  name = "k8s.io/cli-runtime"
   branch = "master"
 [[override]]
   name = "k8s.io/client-go"
   branch = "master"
+[[override]]
+  name = "k8s.io/cloud-provider"
+  branch = "master"
+[[override]]
+  name = "k8s.io/cluster-bootstrap"
+  branch = "master"
+[[override]]
+  name = "k8s.io/csi-api"
+  branch = "master"
+[[override]]
+  name = "k8s.io/kube-aggregator"
+  branch = "master"
+
+# Doesn't do proper releases.
+[[override]]
+  name = "k8s.io/kube-openapi"
+  branch = "master"
+
+# Also no proper releases.
+[[override]]
+  name = "k8s.io/utils"
+  branch = "master"
 
 [[override]]
-  # Both Kubernetes and docker/docker need the new reference.ParseNormalizedNamed
+  # kubernetes/pkg/util/parsers/parsers.go needs the new reference.ParseNormalizedNamed
   # API call, which isn't yet in any stable release.
   name = "github.com/docker/distribution"
   branch = "master"
-
-# This prevents dep from pulling an empty repo for gopkg.in/fsnotify.v1,
-# something that it does not recover from.
-[[override]]
-  name = "gopkg.in/fsnotify.v1"
-  source = "github.com/fsnotify/fsnotify"

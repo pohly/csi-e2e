@@ -30,7 +30,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/podlogs"
 	"k8s.io/kubernetes/test/e2e/storage/testpatterns"
 	"k8s.io/kubernetes/test/e2e/storage/testsuites"
-	"k8s.io/kubernetes/test/e2e/storage/testsuites/testdriver"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
 
 	. "github.com/onsi/ginkgo"
@@ -91,33 +90,33 @@ var _ = Describe("CSI Volumes", func() {
 	})
 
 	// List of test drivers to be tested against.
-	var csiTestDrivers = []func() testdriver.TestDriver{
+	var csiTestDrivers = []func() testsuites.TestDriver{
 		// hostpath driver
-		func() testdriver.TestDriver {
+		func() testsuites.TestDriver {
 			return &manifestDriver{
-				driverInfo: testdriver.DriverInfo{
+				driverInfo: testsuites.DriverInfo{
 					Name:        "csi-hostpath",
 					MaxFileSize: testpatterns.FileSizeMedium,
 					SupportedFsType: sets.NewString(
 						"", // Default fsType
 					),
-					IsPersistent:       true,
-					IsFsGroupSupported: false,
-					IsBlockSupported:   false,
+					Capabilities: map[testsuites.Capability]bool{
+						testsuites.CapPersistence: true,
+						testsuites.CapFsGroup:     true,
+						testsuites.CapExec:        true,
+					},
 
-					Config: &testdriver.TestConfig{
+					Config: testsuites.TestConfig{
 						Framework: f,
 						Prefix:    "csi",
 					},
 				},
 				manifests: []string{
-					"test/e2e/storage/manifests/driver-registrar/rbac.yaml",
 					"test/e2e/storage/manifests/external-attacher/rbac.yaml",
 					"test/e2e/storage/manifests/external-provisioner/rbac.yaml",
 					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-attacher.yaml",
 					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpath-provisioner.yaml",
 					"test/e2e/storage/manifests/hostpath/hostpath/csi-hostpathplugin.yaml",
-					"test/e2e/storage/manifests/hostpath/hostpath/e2e-test-rbac.yaml",
 				},
 				scManifest: "test/e2e/storage/manifests/hostpath/example/usage/csi-storageclass.yaml",
 				// Enable renaming of the driver.
@@ -178,7 +177,7 @@ var _ = Describe("CSI Volumes", func() {
 // driver renaming, tests can run in parallel because each test
 // deployes and removes its own driver instance.
 type manifestDriver struct {
-	driverInfo   testdriver.DriverInfo
+	driverInfo   testsuites.DriverInfo
 	patchOptions utils.PatchCSIOptions
 	manifests    []string
 	scManifest   string
@@ -187,10 +186,10 @@ type manifestDriver struct {
 	cleanup      func()
 }
 
-var _ testdriver.TestDriver = &manifestDriver{}
-var _ testdriver.DynamicPVTestDriver = &manifestDriver{}
+var _ testsuites.TestDriver = &manifestDriver{}
+var _ testsuites.DynamicPVTestDriver = &manifestDriver{}
 
-func (m *manifestDriver) GetDriverInfo() *testdriver.DriverInfo {
+func (m *manifestDriver) GetDriverInfo() *testsuites.DriverInfo {
 	return &m.driverInfo
 }
 
